@@ -4,7 +4,7 @@
     uv run tools/viewer.py <stl> [-o out.html]
 
 - 既定の出力先は STL と同じ場所の <name>-viewer.html
-- 同じ場所に <name>.check.json があれば、チェック結果も表示する
+- 同じ場所に <name>.check.json（複数パーツなら <name>-<part>.check.json）があれば、チェック結果も表示する
 - ドラッグで回転、ホイール／ピンチで拡大縮小、ボタンで正面・側面・上面・アイソメ
 """
 
@@ -43,7 +43,7 @@ TEMPLATE = r"""<!doctype html>
            border:1px solid currentColor; }
   .ok { color:var(--ok); } .warn { color:var(--warn); } .err { color:var(--err); }
   details { margin-top:6px; } summary { cursor:pointer; color:var(--muted); }
-  ul { margin:4px 0 0; padding-left:0; list-style:none; font-size:12px; }
+  ul { margin:4px 0 0; padding-left:0; list-style:none; font-size:12px; max-height:45vh; overflow:auto; }
   li { margin:2px 0; } li b { display:inline-block; width:44px; }
   .views { position:fixed; left:50%; bottom:max(12px, env(safe-area-inset-bottom)); transform:translateX(-50%);
            display:flex; gap:6px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:6px; }
@@ -232,11 +232,28 @@ draw();
 """
 
 
+def load_checks(stl: Path) -> dict | None:
+    """<name>.check.json、無ければパーツ別の <name>-<part>.check.json をまとめて返す。"""
+    single = stl.with_suffix(".check.json")
+    files = [single] if single.is_file() else sorted(stl.parent.glob(f"{stl.stem}-*.check.json"))
+    if not files:
+        return None
+    merged = {"summary": {"errors": 0, "warnings": 0}, "checks": []}
+    for f in files:
+        c = json.loads(f.read_text(encoding="utf-8"))
+        merged["summary"]["errors"] += c["summary"]["errors"]
+        merged["summary"]["warnings"] += c["summary"]["warnings"]
+        part = f.name.removesuffix(".check.json").removeprefix(f"{stl.stem}-")
+        for item in c["checks"]:
+            msg = item["message"] if f == single else f"[{part}] {item['message']}"
+            merged["checks"].append({**item, "message": msg})
+    return merged
+
+
 def build_html(stl: Path) -> str:
     mesh = trimesh.load(stl, force="mesh", process=True)
     mesh.merge_vertices()
-    check_path = stl.with_suffix(".check.json")
-    check = json.loads(check_path.read_text(encoding="utf-8")) if check_path.is_file() else None
+    check = load_checks(stl)
     data = {
         "name": stl.stem,
         "bounds": mesh.bounds.tolist(),

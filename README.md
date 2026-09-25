@@ -22,7 +22,7 @@
 ├── templates/spec.md       # 仕様書の雛形
 ├── models/<name>/
 │   ├── spec.md             # 仕様（寸法・制約・対象年齢・変更履歴）
-│   ├── model.py            # モデル本体（パラメータは先頭の定数、末尾で result = build()）
+│   ├── model.py            # モデル本体（パラメータは先頭の定数、末尾で result = build()。複数パーツは parts も）
 │   └── out/                # STEP / STL / check.json / レンダリング画像（git 管理外）
 └── profiles/               # Bambu Studio プロファイルのエクスポート
 ```

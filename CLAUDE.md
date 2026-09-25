@@ -12,6 +12,8 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
     - **import は build123d（と math / numpy 等）だけ**。build123d-mcp のサンドボックスは `sys` / `os` / `pathlib` 等を禁止しており、1 つでもあると MCP で読み込めない
     - `build()` で形状を作り、**末尾で `result = build()`** とする（MCP の `execute_file` と `tools/export_model.py` はこの変数を読む）
     - ファイル書き出しは書かない（`tools/export_model.py` が行う）。見本は `models/desk-tray/model.py`
+    - **複数パーツ**のモデルは `parts = {"<part>": Part, ...}` を**印刷の向き**で定義し、`result` は組み立て状態（使用時の向き）の Compound にする。各パーツは `out/<name>-<part>.stl` に出力され、個別にチェックされる。見本は `models/slim-bin/model.py`
+    - 可動部はクリアランスだけでなく、**動かしたときの干渉**も確かめる（例: 回転させて `distance_to` を角度ごとに測る）
   - `out/` … 生成物（STEP / STL / check.json / レンダリング画像）。git 管理外
 - **段階的に作って都度検証**する。外形 → くり抜き → 仕切り・穴 → フィレット/面取り、の順に 1 ステップずつ作り、各ステップで体積・バウンディングボックス・有効性を確認してから次へ進む。
 

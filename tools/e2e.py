@@ -1,7 +1,7 @@
 """1 モデル分のワークフローを通しで実行する（E2E 動作確認）。
 
     1. tools/export_model.py     … model.py → out/<name>.step / .stl
-    2. tools/check_stl.py        … 印刷可能性チェック（ERROR 0 で合格）
+    2. tools/check_stl.py        … 印刷可能性チェック（ERROR 0 で合格）。複数パーツは各パーツを印刷の向きで
     3. build123d-mcp（.mcp.json と同じコマンドで起動し MCP プロトコルで呼ぶ）
        execute_file → validate → render_view ×4 … out/<name>-{front,side,top,iso}.png
     4. tools/viewer.py           … out/<name>-viewer.html（回せる 3D ビューア、単体で動く）
@@ -121,7 +121,11 @@ def main(argv: list[str] | None = None) -> int:
         step("2. check_stl")
         opts = [f for f, on in (("--toy", args.toy), ("--dual", args.dual),
                                 ("--allow-supports", args.allow_supports)) if on]
-        results["check_stl"] = check_stl.main([str(model_dir / "out" / f"{name}.stl"), *opts]) == 0
+        ok = True
+        for stl in export_model.printable_stls(model_dir):
+            print(f"\n-- {stl.name}")
+            ok &= check_stl.main([str(stl), *opts]) == 0
+        results["check_stl"] = ok
 
     if not args.no_mcp:
         step("3. build123d-mcp (execute_file / validate / render_view)")
