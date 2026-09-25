@@ -4,6 +4,7 @@
     2. tools/check_stl.py        … 印刷可能性チェック（ERROR 0 で合格）
     3. build123d-mcp（.mcp.json と同じコマンドで起動し MCP プロトコルで呼ぶ）
        execute_file → validate → render_view ×4 … out/<name>-{front,side,top,iso}.png
+    4. tools/viewer.py           … out/<name>-viewer.html（回せる 3D ビューア、単体で動く）
 
 使い方:
     uv run tools/e2e.py models/<name> [--toy] [--dual] [--allow-supports] [--no-mcp]
@@ -23,6 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import check_stl  # noqa: E402
 import export_model  # noqa: E402
+import viewer  # noqa: E402
 
 VIEWS = ["front", "side", "top", "iso"]
 
@@ -124,6 +126,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_mcp:
         step("3. build123d-mcp (execute_file / validate / render_view)")
         results["mcp"] = run_mcp(model_dir, name)
+
+    if results.get("export"):
+        step("4. viewer")
+        results["viewer"] = viewer.main([str(model_dir / "out" / f"{name}.stl")]) == 0
 
     step("summary")
     for k, v in results.items():

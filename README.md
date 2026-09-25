@@ -17,7 +17,8 @@
 │   ├── export_model.py     # model.py → out/ に STEP / STL
 │   ├── check_stl.py        # 印刷可能性チェック CLI
 │   ├── selftest_check_stl.py  # check_stl.py の動作確認（ダミー STL で検証）
-│   └── e2e.py              # 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング）
+│   ├── viewer.py           # STL → 回せる 3D ビューア HTML（単体・オフライン可）
+│   └── e2e.py              # 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア）
 ├── templates/spec.md       # 仕様書の雛形
 ├── models/<name>/
 │   ├── spec.md             # 仕様（寸法・制約・対象年齢・変更履歴）
@@ -85,6 +86,20 @@
    ```
 
    結果は `<name>.check.json` に保存され、ERROR があれば終了コード 1。
+
+## Claude Code クラウド（claude.ai/code・スマホアプリ）で使う
+
+Mac が無くても、クラウドのセッションでモデルの作成から確認まで完結できる。
+
+1. claude.ai/code でこのリポジトリのセッションを開き、「`models/<name>` を作って」と頼む。
+2. Claude が E2E（書き出し → チェック → レンダリング → ビューア生成）まで実行し、会話に次のファイルを送ってくる。
+   - `<name>-viewer.html` … サイドパネルで開くと、**ドラッグで回転・ピンチで拡大**できる 3D ビューア。寸法とチェック結果も表示される
+   - `<name>-iso.png` … 静止画のプレビュー
+   - `<name>.stl` … 印刷用データ（ダウンロードして Bambu Studio で開く）
+3. 見て気になる所を伝え、修正を繰り返す。
+4. 仕上がったら commit / push してもらい、Mac 側で `git pull` → `uv run tools/export_model.py models/<name>` で STL を作り直しても良い（`out/` は git 管理外）。
+
+ビューアは外部ライブラリを読み込まない単体の HTML なので、ダウンロードして Mac のブラウザでオフラインでも開ける。
 
 ## 印刷手順（人が行う）
 

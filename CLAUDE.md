@@ -23,7 +23,8 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 | 有機形状（キャラクター・曲面主体のおもちゃ） | **Blender 公式 MCP**（Blender Lab 版）。非公式の `ahujasid/blender-mcp` は使わない。必要になった時点で README の手順で追加する |
 | STEP / STL 書き出し | `uv run tools/export_model.py models/<name>` |
 | 印刷可能性チェック | `uv run tools/check_stl.py`（チェッカー自体の動作確認は `uv run tools/selftest_check_stl.py`） |
-| 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング） | `uv run tools/e2e.py models/<name> [--toy]` |
+| 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア） | `uv run tools/e2e.py models/<name> [--toy]` |
+| 回せる 3D ビューア（単体 HTML・オフライン可） | `uv run tools/viewer.py models/<name>/out/<name>.stl` → `out/<name>-viewer.html` |
 | スライス・印刷 | **Bambu Studio を人が操作**する。Claude はプリンタに送信しない |
 
 ## Bambu Lab X2D 仕様
@@ -80,6 +81,7 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 4. **`uv run tools/check_stl.py models/<name>/out/<name>.stl`**（おもちゃは `--toy`）を実行し、**ERROR が 0 になるまで修正**する。WARN は理由を確認し、許容するなら spec.md に理由を書く。
 5. **4 方向レンダリング**（正面・側面・上面・アイソメ。build123d-mcp の `render_view`）で自己レビューする。3〜5 は `uv run tools/e2e.py models/<name>` で一括実行でき、画像は `out/<name>-{front,side,top,iso}.png` に出る。意図通りの形か、面取り・フィレットの抜け、薄すぎる箇所が無いかを見る。
 6. **spec.md の変更履歴に追記**する（日付・変更内容・チェック結果）。
+7. **ユーザーに見せる**。Claude Code のクラウド／アプリで作業しているときは、`out/<name>-viewer.html`（回せる 3D ビューア）と `out/<name>-iso.png` をファイル送信ツールで会話に送る。印刷用に `out/<name>.stl` も添付する。
 
 ## やらないこと
 
