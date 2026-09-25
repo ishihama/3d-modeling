@@ -234,3 +234,15 @@ _assembly = [copy(p) for p in (_body, _lid, _flap)]
 for _p, _src in zip(_assembly, (_body, _lid, _flap)):
     _p.label = _src.label
 result = Compound(children=_assembly, label="slim-bin")
+
+# 可動部の定義（tools/viewer.py が読み、角度スライダー・揺れの再生・干渉チェックに使う）
+# origin / direction は使用時の座標。range は度。pendulum は自重で戻る振り子として揺れを再生する
+motions = {
+    "flap": {
+        "label": "フラップ",
+        "origin": (0.0, 0.0, AXIS_Z),
+        "direction": (1.0, 0.0, 0.0),
+        "range": (-90.0, 90.0),
+        "pendulum": True,
+    },
+}

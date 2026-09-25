@@ -14,6 +14,7 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
     - ファイル書き出しは書かない（`tools/export_model.py` が行う）。見本は `models/desk-tray/model.py`
     - **複数パーツ**のモデルは `parts = {"<part>": Part, ...}` を**印刷の向き**で定義し、`result` は組み立て状態（使用時の向き）の Compound にする。各パーツは `out/<name>-<part>.stl` に出力され、個別にチェックされる。見本は `models/slim-bin/model.py`
     - 可動部はクリアランスだけでなく、**動かしたときの干渉**も確かめる（例: 回転させて `distance_to` を角度ごとに測る）
+    - 回転する可動部は `motions = {"<part>": {"label", "origin", "direction", "range", "pendulum"}}` で定義する。ビューアが角度スライダー・揺れの再生・角度ごとの干渉表示を作る（見本は slim-bin）
   - `out/` … 生成物（STEP / STL / check.json / レンダリング画像）。git 管理外
 - **段階的に作って都度検証**する。外形 → くり抜き → 仕切り・穴 → フィレット/面取り、の順に 1 ステップずつ作り、各ステップで体積・バウンディングボックス・有効性を確認してから次へ進む。
 
@@ -26,7 +27,7 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 | STEP / STL 書き出し | `uv run tools/export_model.py models/<name>` |
 | 印刷可能性チェック | `uv run tools/check_stl.py`（チェッカー自体の動作確認は `uv run tools/selftest_check_stl.py`） |
 | 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア） | `uv run tools/e2e.py models/<name> [--toy]` |
-| 回せる 3D ビューア（単体 HTML・オフライン可） | `uv run tools/viewer.py models/<name>/out/<name>.stl` → `out/<name>-viewer.html` |
+| 回せる 3D ビューア（単体 HTML・オフライン可。パーツ表示切替・可動部の操作・断面） | `uv run tools/viewer.py models/<name>` → `out/<name>-viewer.html` |
 | スライス・印刷 | **Bambu Studio を人が操作**する。Claude はプリンタに送信しない |
 
 ## Bambu Lab X2D 仕様

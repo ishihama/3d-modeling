@@ -133,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if results.get("export"):
         step("4. viewer")
-        results["viewer"] = viewer.main([str(model_dir / "out" / f"{name}.stl")]) == 0
+        results["viewer"] = viewer.main([str(model_dir)]) == 0
 
     step("summary")
     for k, v in results.items():
