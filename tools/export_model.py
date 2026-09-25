@@ -20,6 +20,10 @@ from pathlib import Path
 
 from build123d import export_step, export_stl
 
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))   # model.py が printlib を import できるように
+
 STL_TOLERANCE = 0.01          # mm（弦誤差）
 STL_ANGULAR_TOLERANCE = 0.1   # rad
 

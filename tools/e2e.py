@@ -5,6 +5,7 @@
     3. build123d-mcp（.mcp.json と同じコマンドで起動し MCP プロトコルで呼ぶ）
        execute_file → validate → render_view ×4 … out/<name>-{front,side,top,iso}.png
     4. tools/viewer.py           … out/<name>-viewer.html（回せる 3D ビューア、単体で動く）
+    5. tools/viewer_smoke.mjs    … ビューアのブラウザテスト（node と Playwright が無ければスキップ）
 
 使い方:
     uv run tools/e2e.py models/<name> [--toy] [--dual] [--allow-supports] [--no-mcp]
@@ -16,6 +17,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -34,8 +37,9 @@ class McpClient:
 
     def __init__(self) -> None:
         cfg = json.loads((ROOT / ".mcp.json").read_text())["mcpServers"]["build123d"]
+        env = {**os.environ, **cfg.get("env", {})}
         self.proc = subprocess.Popen(
-            [cfg["command"], *cfg["args"]], cwd=ROOT, text=True,
+            [cfg["command"], *cfg["args"]], cwd=ROOT, env=env, text=True,
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
         )
         self.next_id = 0
@@ -108,6 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dual", action="store_true")
     ap.add_argument("--allow-supports", action="store_true")
     ap.add_argument("--no-mcp", action="store_true", help="build123d-mcp の検証・レンダリングを省く")
+    ap.add_argument("--no-browser", action="store_true", help="ビューアのブラウザテストを省く")
     args = ap.parse_args(argv)
 
     model_dir = args.model_dir.resolve()
@@ -134,6 +139,18 @@ def main(argv: list[str] | None = None) -> int:
     if results.get("export"):
         step("4. viewer")
         results["viewer"] = viewer.main([str(model_dir)]) == 0
+
+    if results.get("viewer") and not args.no_browser:
+        step("5. viewer smoke (browser)")
+        html = model_dir / "out" / f"{name}-viewer.html"
+        if shutil.which("node") is None:
+            print("SKIP: node が無い")
+        else:
+            code = subprocess.call(["node", str(ROOT / "tools" / "viewer_smoke.mjs"), str(html)])
+            if code == 2:
+                print("SKIP: playwright が無い")
+            else:
+                results["viewer_smoke"] = code == 0
 
     step("summary")
     for k, v in results.items():

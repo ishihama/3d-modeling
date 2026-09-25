@@ -17,7 +17,6 @@ from __future__ import annotations
 import argparse
 import base64
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -276,9 +275,9 @@ for (const p of parts.filter(p => p.motion)) {
   const rng = $('input', {type: 'range', min: m.range[0], max: m.range[1], step: 1, value: 0});
   const num = $('span', {class: 'num'}, '0°');
   row.append(rng, num); body.appendChild(row);
-  const clr = $('div', {class: 'note'}); body.appendChild(clr);
+  const clr = $('div', {class: 'note clr'}); body.appendChild(clr);
   const upd = () => { rng.value = Math.round(p.angle); num.textContent = `${Math.round(p.angle)}°`;
-    const c = clearanceText(p); if (c) { clr.className = 'note ' + (c.ok ? 'ok' : 'err');
+    const c = clearanceText(p); if (c) { clr.className = 'note clr ' + (c.ok ? 'ok' : 'err');
       clr.textContent = `${c.text}  ※ ${c.at}° の計算値（${DATA.clearanceStep}° ごと）`; } };
   p.update = upd; upd();
   rng.oninput = () => { anim = null; p.angle = +rng.value; p.vel = 0; upd(); draw(); };
@@ -390,43 +389,11 @@ def _part_entry(name: str, label: str, verts: np.ndarray, faces: np.ndarray, i: 
             "positions": _b64(verts, "<f4"), "indices": _b64(faces, "<u4"), "triangles": int(len(faces))}
 
 
-def _pendulum_period(shape, origin, direction) -> float:
-    """剛体振り子の周期 T = 2π √(I / (m g d))（密度一様）。"""
-    from OCP.BRepGProp import BRepGProp
-    from OCP.GProp import GProp_GProps
-    from OCP.gp import gp_Ax1, gp_Dir, gp_Pnt
-
-    props = GProp_GProps()
-    BRepGProp.VolumeProperties_s(shape.wrapped, props)
-    inertia = props.MomentOfInertia(gp_Ax1(gp_Pnt(*origin), gp_Dir(*direction)))
-    com = props.CentreOfMass()
-    o, u = np.array(origin), np.array(direction) / np.linalg.norm(direction)
-    r = np.array([com.X(), com.Y(), com.Z()]) - o
-    d = float(np.linalg.norm(r - u * (r @ u)))      # 軸と重心の距離
-    return 2 * math.pi * math.sqrt(inertia / (props.Mass() * GRAVITY * d))
-
-
-def _clearance(shape, others: dict, origin, direction, rng) -> list[dict]:
-    from build123d import Axis
-
-    axis = Axis(origin, direction)
-    table = []
-    for ang in range(int(rng[0]), int(rng[1]) + 1, CLEARANCE_STEP):
-        moved = shape.rotate(axis, ang)
-        overlap = {}
-        for key, other in others.items():
-            try:
-                inter = other & moved
-                overlap[key] = round(float(inter.volume) if inter else 0.0, 4)
-            except Exception:
-                overlap[key] = -1.0
-        table.append({"angle": ang, "overlap": overlap})
-    return table
-
-
 def data_from_model(model_dir: Path) -> tuple[dict, Path]:
     sys.path.insert(0, str(Path(__file__).parent))
-    import export_model
+    import export_model   # ROOT（printlib）も sys.path に入る
+
+    from printlib import pendulum_period, sweep_interference
 
     model_dir = model_dir.resolve()
     mod = export_model.load(model_dir)
@@ -455,9 +422,10 @@ def data_from_model(model_dir: Path) -> tuple[dict, Path]:
         p["motion"] = {
             "origin": list(m["origin"]), "direction": list(m["direction"]), "range": list(m["range"]),
             "pendulum": bool(m.get("pendulum")), "damping": PENDULUM_DAMPING,
-            "period": _pendulum_period(shape, m["origin"], m["direction"]) if m.get("pendulum") else 0.0,
+            "period": pendulum_period(shape, m["origin"], m["direction"], GRAVITY) if m.get("pendulum") else 0.0,
         }
-        p["clearance"] = _clearance(shape, others, m["origin"], m["direction"], m["range"])
+        angles = range(int(m["range"][0]), int(m["range"][1]) + 1, CLEARANCE_STEP)
+        p["clearance"] = sweep_interference(shape, others, m["origin"], m["direction"], angles)
 
     bb = result.bounding_box()
     name = model_dir.name

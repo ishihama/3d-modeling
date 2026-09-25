@@ -2,7 +2,10 @@
   "mcpServers": {
     "build123d": {
       "command": "uv",
-      "args": ["tool", "run", "--python", "3.12", "build123d-mcp"]
+      "args": ["tool", "run", "--python", "3.12", "build123d-mcp"],
+      "env": {
+        "PYTHONPATH": "."
+      }
     }
   }
 }

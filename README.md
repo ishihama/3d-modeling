@@ -18,7 +18,10 @@
 │   ├── check_stl.py        # 印刷可能性チェック CLI
 │   ├── selftest_check_stl.py  # check_stl.py の動作確認（ダミー STL で検証）
 │   ├── viewer.py           # model.py / STL → 回せる 3D ビューア HTML（単体・オフライン可、可動部の操作つき）
-│   └── e2e.py              # 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア）
+│   ├── viewer_smoke.mjs    # ビューアのブラウザテスト（Playwright）
+│   └── e2e.py              # 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア → ブラウザテスト）
+├── printlib/               # モデル間で使い回す部品・機構・チェック（model.py から import）
+├── tests/test_printlib.py  # printlib のテスト（uv run tests/test_printlib.py）
 ├── templates/spec.md       # 仕様書の雛形
 ├── models/<name>/
 │   ├── spec.md             # 仕様（寸法・制約・対象年齢・変更履歴）
@@ -55,11 +58,13 @@
 4. 動作確認
 
    ```sh
+   uv run tests/test_printlib.py         # 共通ライブラリのテスト
    uv run tools/selftest_check_stl.py    # チェッカーがダミー STL を正しく判定するか
    uv run tools/e2e.py models/desk-tray  # サンプルで書き出し → チェック → MCP → レンダリングまで通す
    ```
 
-   最後に `E2E: PASS` と出れば OK。`models/desk-tray/out/` に STL と 4 方向の PNG ができる。
+   最後に `E2E: PASS` と出れば OK。ビューアのブラウザテストは Playwright があるときだけ走る
+   （入れる場合: `npm i -g playwright && npx playwright install chromium`。無ければスキップ）。`models/desk-tray/out/` に STL と 4 方向の PNG ができる。
 
 5. Bambu Studio をインストールし、プリンタを **LAN オンリーモード** で接続する。
 

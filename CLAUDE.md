@@ -16,17 +16,24 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
     - 可動部はクリアランスだけでなく、**動かしたときの干渉**も確かめる（例: 回転させて `distance_to` を角度ごとに測る）
     - 回転する可動部は `motions = {"<part>": {"label", "origin", "direction", "range", "pendulum"}}` で定義する。ビューアが角度スライダー・揺れの再生・角度ごとの干渉表示を作る（見本は slim-bin）
   - `out/` … 生成物（STEP / STL / check.json / レンダリング画像）。git 管理外
+- **汎用的に使える形状・機構・チェックは `printlib/`（ツールは `tools/`）に置いて commit する**。モデル固有のものだけを `model.py` に書く。
+  - 2 つ目のモデルで同じものが要ったら、その時点で `printlib/` に移す（既存モデルも書き換え、体積が変わらないことを確認する）
+  - `printlib/` に足したものは `tests/test_printlib.py` にテストを足す。import は build123d / math / copy / dataclasses など MCP のサンドボックスで許可されたものだけ
+  - 設計ルールの数値は `printlib.rules` を参照し、model.py に書き写さない
+- **commit するもの**: `models/<name>/`（spec.md・model.py）、`printlib/`、`tools/`、`tests/`、ドキュメント。**commit しないもの**: `out/`（model.py から再生成できる STL / STEP / 画像 / ビューア）
 - **段階的に作って都度検証**する。外形 → くり抜き → 仕切り・穴 → フィレット/面取り、の順に 1 ステップずつ作り、各ステップで体積・バウンディングボックス・有効性を確認してから次へ進む。
 
 ## ツール
 
 | 用途 | ツール |
 | --- | --- |
-| 実用品（寸法が効くもの・機械的な形状） | **build123d-mcp**（`.mcp.json` に登録済み）。保存済みの model.py は `execute_file` で読み込める |
+| 実用品（寸法が効くもの・機械的な形状） | **build123d-mcp**（`.mcp.json` に登録済み。`PYTHONPATH=.` で printlib も読める）。保存済みの model.py は `execute_file` で読み込める |
+| 共通ライブラリ | **`printlib/`**: `rules`（設計ルールの数値）、`tapered_block` / `tapered_bin`（角丸の箱・容器、底面取り込み）、`rim_radius`、`teardrop`（水平穴）、`SnapPivot`（スナップ式の回転軸）、`on_bed` / `flip_for_print` / `make_assembly`、`sweep_interference` / `pendulum_period`。テストは `uv run tests/test_printlib.py` |
 | 有機形状（キャラクター・曲面主体のおもちゃ） | **Blender 公式 MCP**（Blender Lab 版）。非公式の `ahujasid/blender-mcp` は使わない。必要になった時点で README の手順で追加する |
 | STEP / STL 書き出し | `uv run tools/export_model.py models/<name>` |
 | 印刷可能性チェック | `uv run tools/check_stl.py`（チェッカー自体の動作確認は `uv run tools/selftest_check_stl.py`） |
-| 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア） | `uv run tools/e2e.py models/<name> [--toy]` |
+| 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア → ブラウザテスト） | `uv run tools/e2e.py models/<name> [--toy]` |
+| ビューアのブラウザテスト（Playwright。無ければスキップ） | `node tools/viewer_smoke.mjs models/<name>/out/<name>-viewer.html` |
 | 回せる 3D ビューア（単体 HTML・オフライン可。パーツ表示切替・可動部の操作・断面） | `uv run tools/viewer.py models/<name>` → `out/<name>-viewer.html` |
 | スライス・印刷 | **Bambu Studio を人が操作**する。Claude はプリンタに送信しない |
 
