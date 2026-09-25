@@ -219,13 +219,18 @@ function drawPart(p, vp, eye, alpha) {
   gl.uniform3fv(U(meshProg, 'base'), p.color); gl.uniform1f(U(meshProg, 'alpha'), alpha);
   gl.bindVertexArray(p.vao); gl.drawElements(gl.TRIANGLES, p.count, gl.UNSIGNED_INT, 0);
 }
-function draw() {
+// 描画要求はフレームごとにまとめる（同じフレームで何度呼んでも 1 回だけ描く）
+let drawPending = false;
+function draw() { if (!drawPending) { drawPending = true; requestAnimationFrame(() => { drawPending = false; render(); }); } }
+function render() {
   const dpr = Math.min(devicePixelRatio || 1, 2);
   const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   gl.viewport(0, 0, w, h);
   gl.clearColor(...(dark ? [0.086, 0.094, 0.114] : [0.957, 0.961, 0.969]), 1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(true);
+  // 半透明パスで depthMask(false) にしたままだと深度バッファが消去されず、次の描画が全部隠れるため先に戻す
+  gl.depthMask(true); gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   const [vp, eye] = viewProj();
   gl.useProgram(lineProg); gl.uniformMatrix4fv(U(lineProg, 'vp'), false, vp);
   gl.uniform4fv(U(lineProg, 'col'), dark ? [0.25,0.27,0.31,1] : [0.8,0.82,0.86,1]);
