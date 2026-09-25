@@ -11,6 +11,8 @@ dependencies = [
     "numpy",
     "scipy",
     "rtree",
+    "shapely>=2.1.2",
+    "networkx>=3.7",
 ]
 
 [tool.uv]

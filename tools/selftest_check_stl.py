@@ -70,6 +70,49 @@ def mushroom() -> trimesh.Trimesh:
     return trimesh.boolean.union([stem, cap], engine="manifold")
 
 
+def peg() -> trimesh.Trimesh:
+    """大きな台から水平に 20 mm 突き出た棒。下向き面は全体の 1% 未満なので面積チェックは通るが、実際はサポートが要る。"""
+    base = box([60, 60, 40])
+    base.apply_translation([0, 0, 20])
+    rod = box([20, 6, 6])
+    rod.apply_translation([40, 0, 33])
+    return trimesh.boolean.union([base, rod], engine="manifold")
+
+
+def short_peg() -> trimesh.Trimesh:
+    """3 mm だけ突き出た小さな出っ張り → 短い片持ち（WARN）。"""
+    base = box([60, 60, 40])
+    base.apply_translation([0, 0, 20])
+    nub = box([3, 6, 4])
+    nub.apply_translation([31.5, 0, 30])
+    return trimesh.boolean.union([base, nub], engine="manifold")
+
+
+def floating() -> trimesh.Trimesh:
+    """台の上に、つながっていない板が浮いている。"""
+    base = box([40, 40, 10])
+    base.apply_translation([0, 0, 5])
+    plate = box([20, 20, 3])
+    plate.apply_translation([0, 0, 20])
+    return trimesh.util.concatenate([base, plate])
+
+
+def bridge(gap: float):
+    def make() -> trimesh.Trimesh:
+        """2 本の柱に板を渡す（柱の間隔 = ブリッジの長さ）。"""
+        parts = []
+        for sx in (-1, 1):
+            pillar = box([10, 10, 20])
+            pillar.apply_translation([sx * (gap / 2 + 5), 0, 10])
+            parts.append(pillar)
+        slab = box([gap + 20, 10, 3])
+        slab.apply_translation([0, 0, 21.5])
+        parts.append(slab)
+        return trimesh.boolean.union(parts, engine="manifold")
+    make.__doc__ = f"柱の間隔 {gap} mm のブリッジ"
+    return make
+
+
 def thin_box() -> trimesh.Trimesh:
     """肉厚 0.8 mm の箱。"""
     outer = box([50, 50, 30])
@@ -91,12 +134,20 @@ def open_mesh() -> trimesh.Trimesh:
 
 # (名前, 生成関数, オプション, 期待: {code: level})
 CASES = [
-    ("tray", tray, [], {"watertight": "OK", "overhang": "OK", "thickness": "OK", "bed_contact": "OK"}),
+    ("tray", tray, [], {"watertight": "OK", "overhang": "OK", "thickness": "OK", "bed_contact": "OK",
+                        "layer_islands": "OK", "layer_bridges": "OK", "layer_cantilever": "OK"}),
     ("toy_small_part", toy_with_small_part, ["--toy"], {"small_parts": "ERROR"}),
     ("toy_tiny", toy_tiny, ["--toy"], {"small_parts": "ERROR"}),
     ("toy_ok", toy_ok, ["--toy"], {"small_parts": "OK", "overhang": "ERROR"}),
-    ("mushroom", mushroom, [], {"overhang": "ERROR"}),
-    ("mushroom_supports", mushroom, ["--allow-supports"], {"overhang": "WARN"}),
+    ("mushroom", mushroom, [], {"overhang": "ERROR", "layer_cantilever": "ERROR"}),
+    ("mushroom_supports", mushroom, ["--allow-supports"], {"overhang": "WARN", "layer_cantilever": "WARN"}),
+    # 層ごとの解析でしか見つからないもの
+    ("peg", peg, [], {"overhang": "OK", "layer_cantilever": "ERROR"}),
+    ("short_peg", short_peg, [], {"layer_cantilever": "WARN"}),
+    ("floating", floating, [], {"layer_islands": "ERROR"}),
+    # 10 mm 以内のブリッジは面積チェックから除外され OK、超えると ERROR
+    ("bridge_8mm", bridge(8.0), [], {"overhang": "OK", "layer_bridges": "OK", "layer_cantilever": "OK"}),
+    ("bridge_30mm", bridge(30.0), [], {"layer_bridges": "ERROR"}),
     ("thin_box", thin_box, [], {"thickness": "WARN"}),
     ("too_big_single", too_big, [], {"build_volume": "OK"}),
     ("too_big_dual", too_big, ["--dual"], {"build_volume": "ERROR"}),

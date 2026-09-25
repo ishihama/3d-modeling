@@ -6,8 +6,14 @@
 判定:
     - 水密・面の向き（法線の一貫性）・体積            … ERROR
     - 造形範囲（設計上限 = 各辺 -3 mm。--dual で 2 ノズル範囲） … ERROR
-    - 45° 超の下向き面（ベッド接地面を除く）が表面積の 2% 超
+    - 45° 超の下向き面（ベッド接地面・10 mm 以内のブリッジを除く）が表面積の 2% 超
                                                   … ERROR（--allow-supports で WARN）
+    - 層ごとの解析（0.2 mm で輪切りにし、下の層に支えられていない部分を探す）
+        宙に浮いた部分（下に何もない所から始まる）   … ERROR（--allow-supports で WARN）
+        ブリッジ（両側で支えられた水平部）が 10 mm 超  … ERROR（--allow-supports で WARN）
+        片持ちの張り出し（片側だけで支えられた水平部）
+            長さ 5 mm 超 … ERROR（--allow-supports で WARN）/ 1 mm 超 … WARN
+      ※ 斜面のオーバーハングは 1 層ごとの張り出しが小さく層解析では見えないため、上の面積チェックが受け持つ
     - ベッド接地面積 50 mm² 未満                     … WARN
     - 肉厚近似（表面サンプリング＋内向きレイ）で 1.2 mm 未満が 5% 超 … WARN
     - --toy: ボディ分割し、小部品シリンダー（内径 31.7・深さ 57.1 mm）に
@@ -43,6 +49,17 @@ MIN_WALL = 1.2                   # mm
 THIN_RATIO = 0.05
 THICKNESS_SAMPLES = 4000
 RAY_EPS = 1e-3
+
+# --- 層ごとの解析 -------------------------------------------------------------
+LAYER_H = 0.2                    # 積層ピッチ
+LAYER_GROW = LAYER_H * math.tan(math.radians(OVERHANG_MAX_DEG))   # 1 層で許される張り出し（45° → 0.2 mm）
+LAYER_TOL = 0.05                 # 張り出しの判定に足す余裕（メッシュの折れ線近似の誤差）
+LAYER_MIN_REACH = 0.1            # これより短い張り出しは誤差として無視
+MAX_BRIDGE = 10.0                # ブリッジの最大長
+CANTILEVER_WARN = 1.0            # 片持ちの張り出し: これを超えたら WARN
+CANTILEVER_ERROR = 5.0           # 片持ちの張り出し: これを超えたら ERROR
+LAYER_SAMPLE_STEP = 0.2          # 張り出し長さを測るときの輪郭の点間隔
+LAYER_REPORT_MAX = 3             # メッセージに載せる場所の数
 
 # --- 小部品シリンダー（16 CFR 1501 / ASTM F963 相当） ------------------------
 SMALL_PARTS_DIAMETER = 31.7
@@ -111,14 +128,149 @@ def bed_face_mask(mesh: trimesh.Trimesh) -> np.ndarray:
     return on_bed & (mesh.face_normals[:, 2] < -0.99)
 
 
-def check_overhang(mesh: trimesh.Trimesh, allow_supports: bool, rep: Report) -> None:
+def analyze_layers(mesh: trimesh.Trimesh) -> dict:
+    """0.2 mm ごとに輪切りにして、下の層（+ 45° 分の張り出し）に支えられていない部分を分類する。
+
+    戻り値: {"islands": [...], "bridges": [...], "cantilevers": [...]}
+      各要素 {"z", "xy", "area", "reach"(支えからの最大距離), "polygon"(ブリッジのみ)}
+      ブリッジの長さ ≒ 2 × reach（両側から支えられているので、中央が支えから一番遠い）
+    """
+    import shapely
+    from shapely.ops import unary_union
+
+    zmin, zmax = mesh.bounds[0][2], mesh.bounds[1][2]
+    heights = np.arange(zmin + LAYER_H / 2, zmax, LAYER_H)
+    sections = mesh.section_multiplane(plane_origin=[0, 0, 0], plane_normal=[0, 0, 1], heights=list(heights))
+    out = {"islands": [], "bridges": [], "cantilevers": []}
+    prev = None
+    for z, sec in zip(heights, sections):
+        polys = sec.polygons_full if sec is not None else []
+        layer = unary_union(polys).buffer(0) if len(polys) else None
+        if layer is None or layer.is_empty:
+            prev = None
+            continue
+        if prev is None:
+            if z > zmin + LAYER_H:              # 途中の高さで、下に何もない所から始まった
+                for g in getattr(layer, "geoms", [layer]):
+                    out["islands"].append({"z": float(z), "xy": list(g.centroid.coords[0]), "area": g.area,
+                                           "reach": None})
+            prev = layer
+            continue
+        support = prev.buffer(LAYER_GROW + LAYER_TOL)
+        unsupported = layer.difference(support)
+        for g in getattr(unsupported, "geoms", [unsupported]):
+            if g.is_empty or g.area < 1e-3:
+                continue
+            contact = g.boundary.intersection(support.buffer(1e-3))
+            # 輪郭上の点で、支えからの最大距離（張り出しの長さ）を測る
+            ring = shapely.segmentize(g.boundary, LAYER_SAMPLE_STEP)
+            pts = shapely.points(shapely.get_coordinates(ring))
+            reach = float(shapely.distance(support, pts).max()) + LAYER_GROW + LAYER_TOL
+            if contact.is_empty:
+                out["islands"].append({"z": float(z), "xy": list(g.centroid.coords[0]), "area": g.area,
+                                       "reach": None})
+                continue
+            if reach - LAYER_GROW - LAYER_TOL < LAYER_MIN_REACH:
+                continue
+            # 接している所が何か所に分かれているか（線でも点でも、少し太らせて塊の数を数える）
+            blobs = contact.buffer(LAYER_TOL)
+            n_contacts = len(getattr(blobs, "geoms", [blobs]))
+            item = {"z": float(z), "xy": list(g.centroid.coords[0]), "area": g.area, "reach": reach}
+            if n_contacts >= 2:
+                item["span"] = 2 * reach
+                item["polygon"] = g
+                out["bridges"].append(item)
+            else:
+                out["cantilevers"].append(item)
+        prev = layer
+    return out
+
+
+def _where(items: list[dict], key: str, fmt) -> str:
+    items = sorted(items, key=lambda i: -(i.get(key) or i["area"]))[:LAYER_REPORT_MAX]
+    return "、".join(f"z={i['z']:.1f} (x={i['xy'][0]:.1f}, y={i['xy'][1]:.1f}){fmt(i)}" for i in items)
+
+
+def _fmt_area(i: dict) -> str:
+    return f" {i['area']:.1f} mm²"
+
+
+def _fmt_span(i: dict) -> str:
+    return f" 長さ約 {i['span']:.1f} mm"
+
+
+def _fmt_reach(i: dict) -> str:
+    return f" 長さ {i['reach']:.1f} mm"
+
+
+def check_layers(layers: dict, allow_supports: bool, rep: Report) -> None:
+    hard = "WARN" if allow_supports else "ERROR"
+    note = "（--allow-supports により警告扱い）" if allow_supports else ""
+
+    isl = layers["islands"]
+    if isl:
+        rep.add(hard, "layer_islands",
+                f"宙に浮いた部分 {len(isl)} 層分: {_where(isl, 'area', _fmt_area)} → サポートが必要{note}",
+                count=len(isl))
+    else:
+        rep.add("OK", "layer_islands", "宙に浮いた部分なし")
+
+    br = layers["bridges"]
+    long_br = [b for b in br if b["span"] > MAX_BRIDGE]
+    if long_br:
+        rep.add(hard, "layer_bridges",
+                f"{MAX_BRIDGE:g} mm を超えるブリッジ: {_where(long_br, 'span', _fmt_span)}{note}",
+                max_span=round(max(b["span"] for b in br), 2))
+    else:
+        msg = (f"ブリッジ {len(br)} 層分、最長 約 {max(b['span'] for b in br):.1f} mm（上限 {MAX_BRIDGE:g} mm）"
+               if br else "ブリッジなし")
+        rep.add("OK", "layer_bridges", msg, max_span=round(max((b["span"] for b in br), default=0.0), 2))
+
+    ca = layers["cantilevers"]
+    worst = max((c["reach"] for c in ca), default=0.0)
+    if worst > CANTILEVER_ERROR:
+        level, tail = hard, f" → サポートが必要{note}"
+    elif worst > CANTILEVER_WARN:
+        level, tail = "WARN", "（短い片持ち。造形はできることが多いが垂れやすい）"
+    else:
+        level, tail = "OK", ""
+    over = [c for c in ca if c["reach"] > CANTILEVER_WARN]
+    where = f": {_where(over, 'reach', _fmt_reach)}" if over else ""
+    rep.add(level, "layer_cantilever",
+            f"片持ちの張り出し 最長 {worst:.1f} mm（WARN {CANTILEVER_WARN:g} / ERROR {CANTILEVER_ERROR:g} mm）{where}{tail}",
+            max_reach=round(worst, 2), count=len(over))
+
+
+def _bridge_face_mask(mesh: trimesh.Trimesh, layers: dict) -> np.ndarray:
+    """10 mm 以内のブリッジの下面（ほぼ水平な下向き面）に当たる三角形。"""
+    import shapely
+
+    ok = [b for b in layers["bridges"] if b["span"] <= MAX_BRIDGE]
+    mask = np.zeros(len(mesh.faces), dtype=bool)
+    if not ok:
+        return mask
+    down = np.where(mesh.face_normals[:, 2] < -0.99)[0]
+    cents = mesh.triangles_center[down]
+    pts = shapely.points(cents[:, :2])
+    for b in ok:
+        near = np.abs(cents[:, 2] - b["z"]) <= LAYER_H
+        if near.any():
+            inside = shapely.covers(b["polygon"].buffer(LAYER_GROW + LAYER_TOL), pts[near])
+            mask[down[near][inside]] = True
+    return mask
+
+
+def check_overhang(mesh: trimesh.Trimesh, allow_supports: bool, rep: Report, layers: dict | None = None) -> None:
     bed = bed_face_mask(mesh)
+    bridge = _bridge_face_mask(mesh, layers) if layers else np.zeros(len(mesh.faces), dtype=bool)
     # 法線の Z 成分が -sin(45°) より下向き = 垂直から 45° を超えるオーバーハング
     limit = -math.sin(math.radians(OVERHANG_MAX_DEG + OVERHANG_TOL_DEG))
-    over = (mesh.face_normals[:, 2] < limit) & ~bed
+    over = (mesh.face_normals[:, 2] < limit) & ~bed & ~bridge
     area = float(mesh.area_faces[over].sum())
     ratio = area / float(mesh.area)
     msg = f"45° 超の下向き面 {area:.1f} mm²（表面積の {ratio * 100:.2f}%、上限 {OVERHANG_AREA_RATIO * 100:g}%）"
+    if bridge.any():
+        msg += f"。{MAX_BRIDGE:g} mm 以内のブリッジ {float(mesh.area_faces[bridge].sum()):.1f} mm² は除外"
     if ratio <= OVERHANG_AREA_RATIO:
         level = "OK"
     else:
@@ -158,6 +310,17 @@ def check_thickness(mesh: trimesh.Trimesh, rep: Report) -> None:
             ratio=round(ratio, 5), min=round(float(dist.min()), 3), p5=round(p5, 3),
             samples=int(len(dist)))
 
+
+# --- 層ごとの解析 -------------------------------------------------------------
+LAYER_H = 0.2                    # 積層ピッチ
+LAYER_GROW = LAYER_H * math.tan(math.radians(OVERHANG_MAX_DEG))   # 1 層で許される張り出し（45° → 0.2 mm）
+LAYER_TOL = 0.05                 # 張り出しの判定に足す余裕（メッシュの折れ線近似の誤差）
+LAYER_MIN_REACH = 0.1            # これより短い張り出しは誤差として無視
+MAX_BRIDGE = 10.0                # ブリッジの最大長
+CANTILEVER_WARN = 1.0            # 片持ちの張り出し: これを超えたら WARN
+CANTILEVER_ERROR = 5.0           # 片持ちの張り出し: これを超えたら ERROR
+LAYER_SAMPLE_STEP = 0.2          # 張り出し長さを測るときの輪郭の点間隔
+LAYER_REPORT_MAX = 3             # メッセージに載せる場所の数
 
 # --- 小部品シリンダー --------------------------------------------------------
 
@@ -290,7 +453,12 @@ def run(path: Path, toy: bool, dual: bool, allow_supports: bool) -> Report:
     mesh.merge_vertices()
     sound = check_integrity(mesh, rep)
     check_build_volume(mesh, dual, rep)
-    check_overhang(mesh, allow_supports, rep)
+    layers = analyze_layers(mesh) if sound else None
+    check_overhang(mesh, allow_supports, rep, layers)
+    if layers is not None:
+        check_layers(layers, allow_supports, rep)
+    else:
+        rep.add("WARN", "layers", "メッシュが不正なため層ごとの解析を省略")
     check_bed_contact(mesh, rep)
     if sound:
         check_thickness(mesh, rep)

@@ -31,7 +31,7 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 | 共通ライブラリ | **`printlib/`**: `rules`（設計ルールの数値）、`tapered_block` / `tapered_bin`（角丸の箱・容器、底面取り込み）、`rim_radius`、`teardrop`（水平穴）、`SnapPivot`（スナップ式の回転軸）、`on_bed` / `flip_for_print` / `make_assembly`、`sweep_interference` / `pendulum_period`。テストは `uv run tests/test_printlib.py` |
 | 有機形状（キャラクター・曲面主体のおもちゃ） | **Blender 公式 MCP**（Blender Lab 版）。非公式の `ahujasid/blender-mcp` は使わない。必要になった時点で README の手順で追加する |
 | STEP / STL 書き出し | `uv run tools/export_model.py models/<name>` |
-| 印刷可能性チェック | `uv run tools/check_stl.py`（チェッカー自体の動作確認は `uv run tools/selftest_check_stl.py`） |
+| 印刷可能性チェック | `uv run tools/check_stl.py`。水密・造形範囲・斜面のオーバーハング（面積）・肉厚に加え、**0.2 mm ごとの層解析**で宙に浮いた部分・10 mm 超のブリッジ・片持ちの張り出し（1 mm 超 WARN / 5 mm 超 ERROR）を場所の高さ付きで報告する。チェッカー自体の動作確認は `uv run tools/selftest_check_stl.py` |
 | 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア → ブラウザテスト） | `uv run tools/e2e.py models/<name> [--toy]` |
 | ビューアのブラウザテスト（Playwright。無ければスキップ） | `node tools/viewer_smoke.mjs models/<name>/out/<name>-viewer.html` |
 | 回せる 3D ビューア（単体 HTML・オフライン可。パーツ表示切替・可動部の操作・断面） | `uv run tools/viewer.py models/<name>` → `out/<name>-viewer.html` |
