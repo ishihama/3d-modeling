@@ -9,6 +9,9 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 - **モデルはすべてコード化**する。1 モデル = `models/<name>/` の 1 ディレクトリ。
   - `spec.md` … 仕様（人と合意した寸法・制約・変更履歴）
   - `model.py` … モデル本体。**パラメータはファイル先頭の定数**にまとめ、マジックナンバーを本文に散らさない
+    - **import は build123d（と math / numpy 等）だけ**。build123d-mcp のサンドボックスは `sys` / `os` / `pathlib` 等を禁止しており、1 つでもあると MCP で読み込めない
+    - `build()` で形状を作り、**末尾で `result = build()`** とする（MCP の `execute_file` と `tools/export_model.py` はこの変数を読む）
+    - ファイル書き出しは書かない（`tools/export_model.py` が行う）。見本は `models/desk-tray/model.py`
   - `out/` … 生成物（STEP / STL / check.json / レンダリング画像）。git 管理外
 - **段階的に作って都度検証**する。外形 → くり抜き → 仕切り・穴 → フィレット/面取り、の順に 1 ステップずつ作り、各ステップで体積・バウンディングボックス・有効性を確認してから次へ進む。
 
@@ -16,9 +19,11 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 
 | 用途 | ツール |
 | --- | --- |
-| 実用品（寸法が効くもの・機械的な形状） | **build123d-mcp**（`.mcp.json` に登録済み） / `model.py` を `uv run` で実行 |
+| 実用品（寸法が効くもの・機械的な形状） | **build123d-mcp**（`.mcp.json` に登録済み）。保存済みの model.py は `execute_file` で読み込める |
 | 有機形状（キャラクター・曲面主体のおもちゃ） | **Blender 公式 MCP**（Blender Lab 版）。非公式の `ahujasid/blender-mcp` は使わない。必要になった時点で README の手順で追加する |
+| STEP / STL 書き出し | `uv run tools/export_model.py models/<name>` |
 | 印刷可能性チェック | `uv run tools/check_stl.py`（チェッカー自体の動作確認は `uv run tools/selftest_check_stl.py`） |
+| 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング） | `uv run tools/e2e.py models/<name> [--toy]` |
 | スライス・印刷 | **Bambu Studio を人が操作**する。Claude はプリンタに送信しない |
 
 ## Bambu Lab X2D 仕様
@@ -71,9 +76,9 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 
 1. **spec.md を読む**。無ければ `templates/spec.md` を `models/<name>/spec.md` にコピーし、ユーザーに確認しながら埋める。**曖昧な寸法のまま作り始めない**。
 2. **段階的モデリング**（build123d-mcp で 1 ステップずつ形状を確認）。
-3. **`models/<name>/model.py` に保存**し、`uv run models/<name>/model.py` で `out/` に **STEP と STL** を出力する。
+3. **`models/<name>/model.py` に保存**し、`uv run tools/export_model.py models/<name>` で `out/` に **STEP と STL** を出力する。
 4. **`uv run tools/check_stl.py models/<name>/out/<name>.stl`**（おもちゃは `--toy`）を実行し、**ERROR が 0 になるまで修正**する。WARN は理由を確認し、許容するなら spec.md に理由を書く。
-5. **4 方向レンダリング**（正面・側面・上面・アイソメ。build123d-mcp の `render_view`）で自己レビューする。意図通りの形か、面取り・フィレットの抜け、薄すぎる箇所が無いかを見る。
+5. **4 方向レンダリング**（正面・側面・上面・アイソメ。build123d-mcp の `render_view`）で自己レビューする。3〜5 は `uv run tools/e2e.py models/<name>` で一括実行でき、画像は `out/<name>-{front,side,top,iso}.png` に出る。意図通りの形か、面取り・フィレットの抜け、薄すぎる箇所が無いかを見る。
 6. **spec.md の変更履歴に追記**する（日付・変更内容・チェック結果）。
 
 ## やらないこと

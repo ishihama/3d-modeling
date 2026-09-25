@@ -14,13 +14,15 @@
 ├── .mcp.json               # build123d-mcp の登録
 ├── pyproject.toml          # uv 管理（Python 3.12 固定）
 ├── tools/
+│   ├── export_model.py     # model.py → out/ に STEP / STL
 │   ├── check_stl.py        # 印刷可能性チェック CLI
-│   └── selftest_check_stl.py  # check_stl.py の動作確認（ダミー STL で検証）
+│   ├── selftest_check_stl.py  # check_stl.py の動作確認（ダミー STL で検証）
+│   └── e2e.py              # 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング）
 ├── templates/spec.md       # 仕様書の雛形
 ├── models/<name>/
 │   ├── spec.md             # 仕様（寸法・制約・対象年齢・変更履歴）
-│   ├── model.py            # モデル本体（パラメータは先頭の定数）
-│   └── out/                # STEP / STL / check.json（git 管理外）
+│   ├── model.py            # モデル本体（パラメータは先頭の定数、末尾で result = build()）
+│   └── out/                # STEP / STL / check.json / レンダリング画像（git 管理外）
 └── profiles/               # Bambu Studio プロファイルのエクスポート
 ```
 
@@ -49,11 +51,14 @@
    `.mcp.json` に登録済みなので、このディレクトリで `claude` を起動すれば MCP サーバとして読み込まれる
    （初回は承認を求められる）。`/mcp` で `build123d` が connected になっていることを確認する。
 
-4. チェッカーの動作確認
+4. 動作確認
 
    ```sh
-   uv run tools/selftest_check_stl.py
+   uv run tools/selftest_check_stl.py    # チェッカーがダミー STL を正しく判定するか
+   uv run tools/e2e.py models/desk-tray  # サンプルで書き出し → チェック → MCP → レンダリングまで通す
    ```
+
+   最後に `E2E: PASS` と出れば OK。`models/desk-tray/out/` に STL と 4 方向の PNG ができる。
 
 5. Bambu Studio をインストールし、プリンタを **LAN オンリーモード** で接続する。
 
@@ -71,7 +76,8 @@
 3. 手動で再生成・チェックする場合:
 
    ```sh
-   uv run models/<name>/model.py
+   uv run tools/e2e.py models/<name> [--toy]                          # 下の 2 つ + MCP 検証・レンダリングを一括
+   uv run tools/export_model.py models/<name>                        # STEP / STL 書き出しのみ
    uv run tools/check_stl.py models/<name>/out/<name>.stl            # 実用品
    uv run tools/check_stl.py models/<name>/out/<name>.stl --toy      # おもちゃ（小部品判定）
    uv run tools/check_stl.py models/<name>/out/<name>.stl --dual     # 2 ノズル同時使用
