@@ -6,7 +6,7 @@
 判定:
     - 水密・面の向き（法線の一貫性）・体積            … ERROR
     - 造形範囲（設計上限 = 各辺 -3 mm。--dual で 2 ノズル範囲） … ERROR
-    - 45° 超の下向き面（ベッド接地面・10 mm 以内のブリッジを除く）が表面積の 2% 超
+    - 45° 超の下向き面（ベッド接地面・10 mm 以内のブリッジを除く）が表面積の 2% 超、かつ 25 mm² 以上
                                                   … ERROR（--allow-supports で WARN）
     - 層ごとの解析（0.2 mm で輪切りにし、下の層に支えられていない部分を探す）
         宙に浮いた部分（下に何もない所から始まる）   … ERROR（--allow-supports で WARN）
@@ -43,6 +43,8 @@ DESIGN_MARGIN = 3.0
 OVERHANG_MAX_DEG = 45.0          # 垂直からの角度
 OVERHANG_TOL_DEG = 1.0           # 45° 面取りを誤検出しないための許容
 OVERHANG_AREA_RATIO = 0.02       # 表面積に対する割合
+OVERHANG_MIN_AREA = 25.0         # これ未満（5 mm 角程度）の下向き面は割合が大きくても ERROR にしない
+                                 # （割合だけだと、同じ形でも小さな部品ほど厳しくなるため。水平な張り出しは層解析が長さで見る）
 BED_TOL_Z = 0.01                 # ベッド接地面とみなす Z の許容
 BED_CONTACT_MIN_AREA = 50.0      # mm²
 MIN_WALL = 1.2                   # mm
@@ -273,6 +275,9 @@ def check_overhang(mesh: trimesh.Trimesh, allow_supports: bool, rep: Report, lay
         msg += f"。{MAX_BRIDGE:g} mm 以内のブリッジ {float(mesh.area_faces[bridge].sum()):.1f} mm² は除外"
     if ratio <= OVERHANG_AREA_RATIO:
         level = "OK"
+    elif area < OVERHANG_MIN_AREA:
+        level = "OK"
+        msg += f"。{OVERHANG_MIN_AREA:g} mm² 未満なので割合は問わない"
     else:
         level = "WARN" if allow_supports else "ERROR"
         msg += " → サポートが必要" + ("（--allow-supports により警告扱い）" if allow_supports else "")

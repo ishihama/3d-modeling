@@ -17,6 +17,8 @@ sys.path.insert(0, str(ROOT))
 from build123d import Axis, Box, BuildPart, Locations, Mode, Plane, export_step, extrude  # noqa: E402
 
 from printlib import (  # noqa: E402
+    crop,
+    mark_notches,
     SnapPivot,
     flip_for_print,
     make_assembly,
@@ -148,6 +150,22 @@ def test_make_assembly_keeps_parts_exportable():
         export_step(asm, f"{d}/asm.step")
         export_step(a, f"{d}/a.step")      # 子にしたのは複製なので、元の形状も単体で出力できる
         export_step(b, f"{d}/b.step")
+
+
+# --- coupon -------------------------------------------------------------------
+
+def test_crop():
+    b = Box(20, 20, 20)
+    piece = crop(b, (0, -5, -10), (10, 5, 10))
+    approx(piece.volume, 10 * 10 * 20, 1e-6)
+    approx(piece.bounding_box().min.X, 0.0)
+
+
+def test_mark_notches():
+    plate = Box(30, 20, 3)
+    marked = mark_notches(plate, 3, (-5, 10, 0), (1, 0, 0), width=1.2, depth=1.2)
+    approx(plate.volume - marked.volume, 3 * 1.2 * 1.2 * 3, 1e-6)   # 3 本 × 幅 × 奥行 × 板厚
+    assert marked.is_valid
 
 
 # ------------------------------------------------------------------------------

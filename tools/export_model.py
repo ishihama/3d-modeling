@@ -9,6 +9,9 @@ model.py は build123d-mcp のサンドボックスでも読めるよう、build
 複数パーツのモデルは、さらに `parts = {"<part>": Part, ...}` を「印刷の向き」で定義する。
     out/<name>.step / .stl          … result（組み立て状態。ビューア・確認用）
     out/<name>-<part>.step / .stl   … 各パーツ（印刷用。check_stl の対象）
+
+試し刷りクーポンがあれば `coupons = {"<名前>": 形状（印刷の向き）}` を定義する（printlib.coupon を参照）。
+    out/<name>-coupon-<名前>.step / .stl … 試し刷り用（check_stl の対象）
 """
 
 from __future__ import annotations
@@ -46,8 +49,9 @@ def printable_stls(model_dir: Path) -> list[Path]:
 
 
 def _export(shape, path_base: Path) -> None:
-    export_step(shape, path_base.with_suffix(".step"))
-    export_stl(shape, path_base.with_suffix(".stl"),
+    # with_suffix は名前の中のドット（例: snap0.3）を拡張子とみなすので、文字列で連結する
+    export_step(shape, path_base.parent / f"{path_base.name}.step")
+    export_stl(shape, path_base.parent / f"{path_base.name}.stl",
                tolerance=STL_TOLERANCE, angular_tolerance=STL_ANGULAR_TOLERANCE)
     bb = shape.bounding_box()
     print(f"{path_base.name:24} volume {shape.volume:10.1f} mm³  "
@@ -66,7 +70,9 @@ def main(argv: list[str] | None = None) -> int:
     mod = load(model_dir)
     parts = getattr(mod, "parts", None) or {}
 
-    shapes = {"": mod.result, **{f"-{k}": v for k, v in parts.items()}}
+    coupons = getattr(mod, "coupons", None) or {}
+    shapes = {"": mod.result, **{f"-{k}": v for k, v in parts.items()},
+              **{f"-coupon-{k}": v for k, v in coupons.items()}}
     bad = [k or "result" for k, v in shapes.items() if not v.is_valid]
     if bad:
         print(f"ERROR: 不正なソリッド（is_valid = False）: {', '.join(bad)}", file=sys.stderr)

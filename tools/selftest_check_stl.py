@@ -88,6 +88,15 @@ def short_peg() -> trimesh.Trimesh:
     return trimesh.boolean.union([base, nub], engine="manifold")
 
 
+def tiny_nub() -> trimesh.Trimesh:
+    """8 mm 角の小さな部品に 4 mm の出っ張り。下向き面は 16 mm² だが表面積の 3% 超（割合だけなら ERROR になっていた）。"""
+    base = box([8, 8, 8])
+    base.apply_translation([0, 0, 4])
+    nub = box([4, 4, 3])
+    nub.apply_translation([6, 0, 5.5])
+    return trimesh.boolean.union([base, nub], engine="manifold")
+
+
 def floating() -> trimesh.Trimesh:
     """台の上に、つながっていない板が浮いている。"""
     base = box([40, 40, 10])
@@ -145,6 +154,7 @@ CASES = [
     ("peg", peg, [], {"overhang": "OK", "layer_cantilever": "ERROR"}),
     ("short_peg", short_peg, [], {"layer_cantilever": "WARN"}),
     ("floating", floating, [], {"layer_islands": "ERROR"}),
+    ("tiny_nub", tiny_nub, [], {"overhang": "OK", "layer_cantilever": "WARN"}),
     # 10 mm 以内のブリッジは面積チェックから除外され OK、超えると ERROR
     ("bridge_8mm", bridge(8.0), [], {"overhang": "OK", "layer_bridges": "OK", "layer_cantilever": "OK"}),
     ("bridge_30mm", bridge(30.0), [], {"layer_bridges": "ERROR"}),

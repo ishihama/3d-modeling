@@ -26,7 +26,7 @@ from build123d import (
     fillet,
 )
 
-from printlib import SnapPivot, flip_for_print, make_assembly, on_bed, rules, tapered_bin
+from printlib import SnapPivot, crop, flip_for_print, make_assembly, mark_notches, on_bed, rules, tapered_bin
 
 # --- 本体 -----------------------------------------------------------------
 TOP_W = 150.0            # 上端外形 幅（X）
@@ -67,9 +67,16 @@ BLOCK_GAP = 1.0          # 耳と軸受けブロックの隙間（X）
 BLOCK_W = 6.0            # 軸受けブロック 幅（X）
 BLOCK_D = 14.0           # 軸受けブロック 奥行（Y）
 SEAT_TOP_MARGIN = 1.1    # 軸受け穴の上端から天板下面まで
-SEAT_STRAIGHT = 0.4      # 軸受け穴の直線部（軸が入口の返しに乗ったとき、ほぼ穴の中心に来る長さ。計算値は 0.38）
+SEAT_STRAIGHT = None     # 軸受け穴の直線部。None = 軸が入口の返しに乗ったとき、ちょうど穴の中心に来る長さを自動計算（snap 0.4 で 0.38）
 NECK_L = 1.0             # スナップ入口（狭い部分）の長さ
 MOUTH = 1.0              # 入口の 45° 呼び込みの深さ
+
+# --- 試し刷りクーポン（spec.md「試し刷り」） ------------------------------------------
+COUPON_SNAPS = (0.3, 0.4, 0.5)   # 軸受けの入口の狭め量を変えた 3 種（刻みの本数 1〜3 で見分ける）
+COUPON_MARGIN = 4.0              # 軸受けブロックのまわりに残す天板の幅
+COUPON_FLAP_LEN = 8.0            # フラップ側クーポン: 耳から内側に残す板の長さ
+COUPON_FLAP_HALF_D = 8.0         # フラップ側クーポン: 板の半奥行
+COUPON_RIM_H = 12.0              # 本体上端リングの高さ（蓋のはまり具合を見る）
 
 # --- 導出値 -------------------------------------------------------------------
 PIVOT = SnapPivot(pin_d=PIN_D, clear=MOVE_CLEAR, snap=SNAP, neck=NECK_L, mouth=MOUTH, straight=SEAT_STRAIGHT)
@@ -87,7 +94,7 @@ def build_body():
                        bottom_chamfer=BOTTOM_CHAMFER, rim_r=TOP_FILLET)
 
 
-def build_lid():
+def build_lid(pivot: SnapPivot = PIVOT):
     skirt_in_w, skirt_in_d = TOP_W + 2 * LID_FIT, TOP_D + 2 * LID_FIT
     skirt_in_r = CORNER_R + LID_FIT
     out_w, out_d, out_r = skirt_in_w + 2 * SKIRT_WALL, skirt_in_d + 2 * SKIRT_WALL, skirt_in_r + SKIRT_WALL
@@ -106,13 +113,13 @@ def build_lid():
         # 3. 天板上面の縁を面取り（外周・投入口）
         chamfer(lid.edges().filter_by_position(Axis.Z, HEIGHT + PLATE_T, HEIGHT + PLATE_T), LID_TOP_CHAMFER)
         # 4. 軸受けブロック（天板の裏から下がる）
-        block_h = HEIGHT - BLOCK_BOTTOM
-        with Locations(*[(s * (BLOCK_X0 + BLOCK_W / 2), 0, BLOCK_BOTTOM + block_h / 2) for s in (-1, 1)]):
+        block_h = HEIGHT - (AXIS_Z - pivot.depth)
+        with Locations(*[(s * (BLOCK_X0 + BLOCK_W / 2), 0, HEIGHT - block_h / 2) for s in (-1, 1)]):
             Box(BLOCK_W, BLOCK_D, block_h)
         # 5. 軸受けの溝（X 方向に貫通。下に開くスナップ溝。蓋は逆さに印刷するので返しは 45° で造形できる）
         for s in (-1, 1):
             plane = Plane.YZ.offset(s * (BLOCK_X0 + BLOCK_W / 2))
-            extrude(PIVOT.seat_sketch(plane, (0, AXIS_Z)), amount=BLOCK_W / 2 + 0.5, both=True, mode=Mode.SUBTRACT)
+            extrude(pivot.seat_sketch(plane, (0, AXIS_Z)), amount=BLOCK_W / 2 + 0.5, both=True, mode=Mode.SUBTRACT)
     return lid.part
 
 
@@ -158,6 +165,26 @@ parts = {
 
 # 組み立て状態（使用時の向き）
 result = make_assembly("slim-bin", {"body": _body, "lid": _lid, "flap": _flap})
+
+# 試し刷りクーポン（印刷の向き）。本体を刷る前に、スナップの固さと蓋のはまり具合だけを小さく確かめる
+def build_coupons():
+    x0 = BLOCK_X0 - COUPON_MARGIN
+    x1 = BLOCK_X0 + BLOCK_W + COUPON_MARGIN
+    half_d = BLOCK_D / 2 + COUPON_MARGIN
+    out = {}
+    for i, snap in enumerate(COUPON_SNAPS, start=1):
+        pv = SnapPivot(pin_d=PIN_D, clear=MOVE_CLEAR, snap=snap, neck=NECK_L, mouth=MOUTH, straight=SEAT_STRAIGHT)
+        piece = crop(build_lid(pv), (x0, -half_d, AXIS_Z - pv.depth - 1), (x1, half_d, HEIGHT + PLATE_T + 1))
+        # 刻みの本数 = 種類の番号（天板の +Y 側の縁。x0 側は投入口で天板が無いのでブロック側から並べる）
+        piece = mark_notches(piece, i, (BLOCK_X0 + 1.5, half_d, HEIGHT + PLATE_T / 2), (1, 0, 0))
+        out[f"seat-snap{round(snap * 10):02d}"] = flip_for_print(piece)   # 例: snap 0.3 → seat-snap03
+    out["pin"] = on_bed(crop(_flap, (EAR_X0 - COUPON_FLAP_LEN, -COUPON_FLAP_HALF_D, FLAP_Z - FLAP_T),
+                             (PIN_X0 + PIN_L + 1, COUPON_FLAP_HALF_D, AXIS_Z + EAR_HALF + 1)))
+    out["rim"] = on_bed(crop(_body, (-TOP_W, -TOP_D, HEIGHT - COUPON_RIM_H), (TOP_W, TOP_D, HEIGHT + 1)))
+    return out
+
+
+coupons = build_coupons()
 
 # 可動部の定義（tools/viewer.py が読み、角度スライダー・揺れの再生・干渉チェックに使う）
 # origin / direction は使用時の座標。range は度。pendulum は自重で戻る振り子として揺れを再生する

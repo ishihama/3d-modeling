@@ -8,6 +8,7 @@ build123d / math / copy / dataclasses 等の許可されたモジュールだけ
 
 from . import rules
 from .assembly import flip_for_print, make_assembly, on_bed
+from .coupon import crop, mark_notches
 from .motion import pendulum_period, sweep_interference
 from .pivot import SnapPivot
 from .shapes import rim_radius, tapered_bin, tapered_block, teardrop
@@ -17,5 +18,6 @@ __all__ = [
     "tapered_block", "tapered_bin", "rim_radius", "teardrop",
     "SnapPivot",
     "on_bed", "flip_for_print", "make_assembly",
+    "crop", "mark_notches",
     "sweep_interference", "pendulum_period",
 ]
