@@ -1,0 +1,14 @@
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 生成物（model.py から再生成できる）
+models/*/out/*
+!models/*/out/.gitkeep
+
+# OS / エディタ
+.DS_Store
+.idea/
+.vscode/

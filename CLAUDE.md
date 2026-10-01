@@ -1,0 +1,101 @@
+# CLAUDE.md
+
+家庭用の小物・おもちゃを Bambu Lab X2D で 3D プリントするためのリポジトリ。
+Claude はこのファイルのルールに従ってモデルを設計・検証する。
+
+## 方針
+
+- **ローカル完結**。外部 SaaS・クラウド 3D 生成 API・オンライン変換サービスは使わない。
+- **モデルはすべてコード化**する。1 モデル = `models/<name>/` の 1 ディレクトリ。
+  - `spec.md` … 仕様（人と合意した寸法・制約・変更履歴）
+  - `model.py` … モデル本体。**パラメータはファイル先頭の定数**にまとめ、マジックナンバーを本文に散らさない
+    - **import は build123d（と math / numpy 等）だけ**。build123d-mcp のサンドボックスは `sys` / `os` / `pathlib` 等を禁止しており、1 つでもあると MCP で読み込めない
+    - `build()` で形状を作り、**末尾で `result = build()`** とする（MCP の `execute_file` と `tools/export_model.py` はこの変数を読む）
+    - ファイル書き出しは書かない（`tools/export_model.py` が行う）。見本は `models/desk-tray/model.py`
+    - **複数パーツ**のモデルは `parts = {"<part>": Part, ...}` を**印刷の向き**で定義し、`result` は組み立て状態（使用時の向き）の Compound にする。各パーツは `out/<name>-<part>.stl` に出力され、個別にチェックされる。見本は `models/slim-bin/model.py`
+    - 可動部はクリアランスだけでなく、**動かしたときの干渉**も確かめる（例: 回転させて `distance_to` を角度ごとに測る）
+    - **はめあい・スナップなど実物でしか決まらない寸法**は、`coupons = {"<名前>": 形状（印刷の向き）}` に試し刷りクーポンを定義する（`printlib.crop` で切り出し、値を振った種類は `printlib.mark_notches` の刻みで見分ける）。`out/<name>-coupon-<名前>.stl` に出力・チェックされる。spec.md に「試し刷り」の手順を書き、暫定値であることを明記する（見本は slim-bin）
+    - 回転する可動部は `motions = {"<part>": {"label", "origin", "direction", "range", "pendulum"}}` で定義する。ビューアが角度スライダー・揺れの再生・角度ごとの干渉表示を作る（見本は slim-bin）
+  - `out/` … 生成物（STEP / STL / check.json / レンダリング画像）。git 管理外
+- **汎用的に使える形状・機構・チェックは `printlib/`（ツールは `tools/`）に置いて commit する**。モデル固有のものだけを `model.py` に書く。
+  - 2 つ目のモデルで同じものが要ったら、その時点で `printlib/` に移す（既存モデルも書き換え、体積が変わらないことを確認する）
+  - `printlib/` に足したものは `tests/test_printlib.py` にテストを足す。import は build123d / math / copy / dataclasses など MCP のサンドボックスで許可されたものだけ
+  - 設計ルールの数値は `printlib.rules` を参照し、model.py に書き写さない
+- **commit するもの**: `models/<name>/`（spec.md・model.py）、`printlib/`、`tools/`、`tests/`、ドキュメント。**commit しないもの**: `out/`（model.py から再生成できる STL / STEP / 画像 / ビューア）
+- **段階的に作って都度検証**する。外形 → くり抜き → 仕切り・穴 → フィレット/面取り、の順に 1 ステップずつ作り、各ステップで体積・バウンディングボックス・有効性を確認してから次へ進む。
+
+## ツール
+
+| 用途 | ツール |
+| --- | --- |
+| 実用品（寸法が効くもの・機械的な形状） | **build123d-mcp**（`.mcp.json` に登録済み。`PYTHONPATH=.` で printlib も読める）。保存済みの model.py は `execute_file` で読み込める |
+| 共通ライブラリ | **`printlib/`**: `rules`（設計ルールの数値）、`tapered_block` / `tapered_bin`（角丸の箱・容器、底面取り込み）、`rim_radius`、`teardrop`（水平穴）、`SnapPivot`（スナップ式の回転軸）、`on_bed` / `flip_for_print` / `make_assembly`、`crop` / `mark_notches`（試し刷りクーポン）、`sweep_interference` / `pendulum_period`。テストは `uv run tests/test_printlib.py` |
+| 有機形状（キャラクター・曲面主体のおもちゃ） | **Blender 公式 MCP**（Blender Lab 版）。非公式の `ahujasid/blender-mcp` は使わない。必要になった時点で README の手順で追加する |
+| STEP / STL 書き出し | `uv run tools/export_model.py models/<name>` |
+| 印刷可能性チェック | `uv run tools/check_stl.py`。水密・造形範囲・斜面のオーバーハング（面積が表面積の 2% 超かつ 25 mm² 以上）・肉厚に加え、**0.2 mm ごとの層解析**で宙に浮いた部分・10 mm 超のブリッジ・片持ちの張り出し（1 mm 超 WARN / 5 mm 超 ERROR）を場所の高さ付きで報告する。チェッカー自体の動作確認は `uv run tools/selftest_check_stl.py` |
+| 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア → ブラウザテスト） | `uv run tools/e2e.py models/<name> [--toy]` |
+| ビューアのブラウザテスト（Playwright。無ければスキップ） | `node tools/viewer_smoke.mjs models/<name>/out/<name>-viewer.html` |
+| 回せる 3D ビューア（単体 HTML・オフライン可。パーツ表示切替・可動部の操作・断面） | `uv run tools/viewer.py models/<name>` → `out/<name>-viewer.html` |
+| スライス・印刷 | **Bambu Studio を人が操作**する。Claude はプリンタに送信しない |
+
+## Bambu Lab X2D 仕様
+
+- 造形範囲
+  - メイン（単一ノズル）: **256 × 256 × 260 mm**
+  - 2 ノズル同時使用: **235.5 × 256 × 256 mm**
+  - **設計上限は各辺 −3 mm**（単一: 253 × 253 × 257 / 2 ノズル: 232.5 × 253 × 253 mm）
+- ノズル 0.4 mm、積層ピッチ 0.2 mm
+- 材料: 既定は **PLA**。耐熱・粘り（スナップフィット、車内、屋外、ヒンジ）が要るものは **PETG**
+- 運用: **LAN オンリーモード**（クラウド非接続）
+
+### デュアルノズル
+
+- 既定は **単一素材・サポート無しで成立する形状** にする。
+- サポートがどうしても避けられない場合に限り、「サポート接触面を剥離しやすい素材（サポート専用材 / PLA↔PETG の組み合わせ等）」を前提に設計してよい。その場合は **spec.md に明記**し、`check_stl.py --allow-supports`（2 ノズル範囲なら `--dual` も）でチェックする。
+
+## 設計ルール
+
+| 項目 | 値 |
+| --- | --- |
+| 肉厚 | 最小 **1.2 mm**（構造部・荷重がかかる部分は **2.0 mm 以上**） |
+| 底面厚 | **1.2 mm 以上** |
+| オーバーハング | **45° 以内**（垂直から） |
+| ブリッジ | **10 mm 以内** |
+| 最小フィーチャ | **0.8 mm**（ノズル径 × 2） |
+| 底面外周 | **0.5 mm 面取り**（エレファントフット対策） |
+| 上向きエッジ | **R1 以上** |
+| クリアランス（片側） | 固定（圧入・はめ込み）**0.15** / 蓋 **0.25** / 可動（回転・スライド）**0.4 mm** |
+| 垂直穴 | 設計径 **+0.2 mm** |
+| 水平穴 | **涙滴形** か上側 **45° 面取り**（サポート不要にする） |
+| 刻印・エンボス | 深さ（高さ）**0.6 mm**、線幅 **0.8 mm 以上** |
+| 向き | **最大平面を底**にする（ベッド接地面を広く取る） |
+
+## 子供向け安全ルール（おもちゃ・子供が触る物）
+
+- **小部品シリンダー（内径 31.7 mm・深さ 57.1 mm）に入るパーツは禁止**。分解できる部品だけでなく**本体も含む**。`check_stl.py --toy` でチェックする。
+- 細い突起（腕・角・持ち手等）は **直径 5 mm 以上**。
+- エッジは **R1 以上**、先端（尖った部分）は **R2 以上**。
+- **磁石・電池・金属部品の埋め込み禁止**。
+- **口に入れる用途（おしゃぶり・歯固め等）や食品容器は作らない**（FDM 積層痕の衛生・材料の食品適合の問題）。
+- **対象年齢は spec.md に必ず記載**する。
+
+## 収納
+
+- 引き出し内の小物入れは **Gridfinity 準拠**: 42 × 42 mm グリッド、高さ単位 7 mm。
+  ベースプロファイル・スタッキングリップは Gridfinity 標準寸法に合わせる。
+
+## ワークフロー
+
+1. **spec.md を読む**。無ければ `templates/spec.md` を `models/<name>/spec.md` にコピーし、ユーザーに確認しながら埋める。**曖昧な寸法のまま作り始めない**。
+2. **段階的モデリング**（build123d-mcp で 1 ステップずつ形状を確認）。
+3. **`models/<name>/model.py` に保存**し、`uv run tools/export_model.py models/<name>` で `out/` に **STEP と STL** を出力する。
+4. **印刷用 STL を `uv run tools/check_stl.py` でチェック**し（おもちゃは `--toy`）、**ERROR が 0 になるまで修正**する。印刷用 STL は単体モデルなら `out/<name>.stl`、複数パーツなら各 `out/<name>-<part>.stl` と `out/<name>-coupon-*.stl`（一覧は `out/<name>.printables.json`。組み立て状態の `out/<name>.stl` は印刷用ではないのでチェックしない）。e2e はこの一覧を全部チェックし、クーポンには `--toy` をかけない（大人が使う試し刷り用）。WARN は理由を確認し、許容するなら spec.md に理由を書く。
+5. **4 方向レンダリング**（正面・側面・上面・アイソメ。build123d-mcp の `render_view`）で自己レビューする。3〜5 は `uv run tools/e2e.py models/<name>` で一括実行でき、画像は `out/<name>-{front,side,top,iso}.png` に出る。意図通りの形か、面取り・フィレットの抜け、薄すぎる箇所が無いかを見る。
+6. **spec.md の変更履歴に追記**する（日付・変更内容・チェック結果）。
+7. **ユーザーに見せる**。Claude Code のクラウド／アプリで作業しているときは、`out/<name>-viewer.html`（回せる 3D ビューア）と `out/<name>-iso.png` をファイル送信ツールで会話に送る。印刷用に `out/<name>.stl` も添付する。
+
+## やらないこと
+
+- プリンタへの送信（印刷開始・ファイル転送を含む）。印刷は人が Bambu Studio から行う。
+- `check_stl.py` を通過していない STL を完成扱いすること。
+- **spec.md に無い寸法を無断で決める**こと。決める必要が出たらユーザーに確認し、spec.md に追記してから使う。
