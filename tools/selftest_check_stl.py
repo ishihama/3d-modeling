@@ -122,6 +122,15 @@ def bridge(gap: float):
     return make
 
 
+def sealed_cavity() -> trimesh.Trimesh:
+    """大きな板の中に 30 mm 角の密閉空洞 → 天井は四方を支えられた 30 mm のブリッジ（輪郭だけ見ると見逃す）。"""
+    slab = box([200, 200, 20])
+    slab.apply_translation([0, 0, 10])
+    cavity = box([30, 30, 8])
+    cavity.apply_translation([0, 0, 10])
+    return slab.difference(cavity, engine="manifold")
+
+
 def thin_box() -> trimesh.Trimesh:
     """肉厚 0.8 mm の箱。"""
     outer = box([50, 50, 30])
@@ -158,6 +167,7 @@ CASES = [
     # 10 mm 以内のブリッジは面積チェックから除外され OK、超えると ERROR
     ("bridge_8mm", bridge(8.0), [], {"overhang": "OK", "layer_bridges": "OK", "layer_cantilever": "OK"}),
     ("bridge_30mm", bridge(30.0), [], {"layer_bridges": "ERROR"}),
+    ("sealed_cavity", sealed_cavity, [], {"overhang": "OK", "layer_bridges": "ERROR"}),
     ("thin_box", thin_box, [], {"thickness": "WARN"}),
     ("too_big_single", too_big, [], {"build_volume": "OK"}),
     ("too_big_dual", too_big, ["--dual"], {"build_volume": "ERROR"}),

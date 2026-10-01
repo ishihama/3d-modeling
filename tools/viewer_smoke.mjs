@@ -87,7 +87,7 @@ if (hasMotion) {
 }
 await page.mouse.move(550, 380); await page.mouse.down(); await page.mouse.move(600, 360, { steps: 4 }); await page.mouse.up();
 await page.waitForTimeout(100);
-let v = await coverage(); check('ドラッグしても消えない', near(v) || v > 3, `${v.toFixed(1)}%`);
+let v = await coverage(); check('ドラッグしても消えない', v > base * 0.3, `${v.toFixed(1)}%`);
 const clip = page.locator('#ctrlBody input[type=checkbox]').last();
 await clip.check(); await page.waitForTimeout(150);
 v = await coverage(); check('断面表示で描画される', v > 3, `${v.toFixed(1)}%`); await shot('section');

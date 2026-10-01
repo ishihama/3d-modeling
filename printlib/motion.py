@@ -42,4 +42,6 @@ def pendulum_period(shape, origin, direction, gravity: float = 9810.0) -> float:
     r = [com.X() - origin[0], com.Y() - origin[1], com.Z() - origin[2]]
     along = sum(a * b for a, b in zip(r, u))
     d = math.sqrt(max(sum(c * c for c in r) - along * along, 0.0))   # 軸と重心の距離
+    if d < 1e-9:
+        raise ValueError("重心が回転軸の上にあるので振り子として揺れない（周期が定まらない）")
     return 2 * math.pi * math.sqrt(inertia / (props.Mass() * gravity * d))

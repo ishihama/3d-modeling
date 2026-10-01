@@ -84,6 +84,7 @@
    ```sh
    uv run tools/e2e.py models/<name> [--toy]                          # 下の 2 つ + MCP 検証・レンダリングを一括
    uv run tools/export_model.py models/<name>                        # STEP / STL 書き出しのみ
+   # 印刷用 STL: 単体モデルは out/<name>.stl、複数パーツは out/<name>-<part>.stl とクーポン（一覧は out/<name>.printables.json）
    uv run tools/check_stl.py models/<name>/out/<name>.stl            # 実用品
    uv run tools/check_stl.py models/<name>/out/<name>.stl --toy      # おもちゃ（小部品判定）
    uv run tools/check_stl.py models/<name>/out/<name>.stl --dual     # 2 ノズル同時使用

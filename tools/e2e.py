@@ -127,9 +127,11 @@ def main(argv: list[str] | None = None) -> int:
         opts = [f for f, on in (("--toy", args.toy), ("--dual", args.dual),
                                 ("--allow-supports", args.allow_supports)) if on]
         ok = True
-        for stl in export_model.printable_stls(model_dir):
-            print(f"\n-- {stl.name}")
-            ok &= check_stl.main([str(stl), *opts]) == 0
+        for stl, kind in export_model.printable_entries(model_dir):
+            # クーポンは大人が使う試し刷り用で、わざと小さいので小部品判定（--toy）はかけない
+            o = [x for x in opts if not (kind == "coupon" and x == "--toy")]
+            print(f"\n-- {stl.name}" + ("（クーポン: --toy なし）" if o != opts else ""))
+            ok &= check_stl.main([str(stl), *o]) == 0
         results["check_stl"] = ok
 
     if not args.no_mcp:

@@ -366,20 +366,25 @@ def _b64(arr: np.ndarray, dtype: str) -> str:
     return base64.b64encode(np.ascontiguousarray(arr, dtype=dtype).tobytes()).decode()
 
 
-def load_checks(stl: Path) -> dict | None:
-    """<name>.check.json、無ければパーツ別の <name>-<part>.check.json をまとめて返す。"""
-    single = stl.with_suffix(".check.json")
-    files = [single] if single.is_file() else sorted(stl.parent.glob(f"{stl.stem}-*.check.json"))
-    if not files:
+def load_checks(stl: Path, files: list[Path] | None = None) -> dict | None:
+    """チェック結果をまとめて返す。
+
+    files: 対象の印刷用 STL（model.py から作るときは export_model のマニフェストの一覧）。
+           None なら stl 自身の <name>.check.json だけを読む。
+    """
+    targets = files if files is not None else [stl]
+    found = [(t, t.parent / f"{t.stem}.check.json") for t in targets]
+    found = [(t, c) for t, c in found if c.is_file()]
+    if not found:
         return None
     merged = {"summary": {"errors": 0, "warnings": 0}, "checks": []}
-    for f in files:
+    for t, f in found:
         c = json.loads(f.read_text(encoding="utf-8"))
         merged["summary"]["errors"] += c["summary"]["errors"]
         merged["summary"]["warnings"] += c["summary"]["warnings"]
-        part = f.name.removesuffix(".check.json").removeprefix(f"{stl.stem}-")
+        label = t.stem.removeprefix(f"{stl.stem}-")
         for item in c["checks"]:
-            msg = item["message"] if f == single else f"[{part}] {item['message']}"
+            msg = item["message"] if len(found) == 1 and t == stl else f"[{label}] {item['message']}"
             merged["checks"].append({**item, "message": msg})
     return merged
 
@@ -413,6 +418,9 @@ def data_from_model(model_dir: Path) -> tuple[dict, Path]:
         labels[key] = label
         parts.append(_part_entry(key, label, v, f, i))
 
+    unknown = [k for k in motions if k not in named]
+    if unknown:
+        raise SystemExit(f"motions のキー {unknown} が result の子のラベル {list(named)} に無い")
     for p in parts:
         m = motions.get(p["name"])
         if not m:
@@ -438,7 +446,9 @@ def data_from_model(model_dir: Path) -> tuple[dict, Path]:
     data = {
         "name": name, "bounds": [[bb.min.X, bb.min.Y, bb.min.Z], [bb.max.X, bb.max.Y, bb.max.Z]], "extents": [bb.size.X, bb.size.Y, bb.size.Z],
         "volume": float(sum(s.volume for s in shapes)), "parts": parts, "labels": labels,
-        "check": load_checks(out_stl), "clearanceStep": CLEARANCE_STEP, "sectionX": section_x,
+        "check": load_checks(out_stl, export_model.printable_stls(model_dir)
+                             if (model_dir / "out" / f"{name}{export_model.MANIFEST_SUFFIX}").is_file() else None),
+        "clearanceStep": CLEARANCE_STEP, "sectionX": section_x,
     }
     return data, model_dir / "out" / f"{name}-viewer.html"
 
@@ -472,7 +482,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     out = args.output or out
     out.parent.mkdir(exist_ok=True)
-    html = TEMPLATE.replace("__TITLE__", f"{data['name']} ビューア").replace("__DATA__", json.dumps(data, ensure_ascii=False))
+    html = TEMPLATE.replace("__TITLE__", f"{data['name']} ビューア").replace(
+        "__DATA__", json.dumps(data, ensure_ascii=False).replace("</", "<\\/"))   # </script> で途切れないように
     out.write_text(html, encoding="utf-8")
     moving = [p["label"] for p in data["parts"] if p.get("motion")]
     print(f"viewer: {out}（{out.stat().st_size / 1024:.0f} KB、パーツ {len(data['parts'])}"

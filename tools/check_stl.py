@@ -62,6 +62,8 @@ CANTILEVER_WARN = 1.0            # 片持ちの張り出し: これを超えた�
 CANTILEVER_ERROR = 5.0           # 片持ちの張り出し: これを超えたら ERROR
 LAYER_SAMPLE_STEP = 0.2          # 張り出し長さを測るときの輪郭の点間隔
 LAYER_REPORT_MAX = 3             # メッセージに載せる場所の数
+LAYER_GRID_POINTS = 400          # 張り出し長さを測るとき、領域の内側に置く点の数の目安
+BRIDGE_CONTACT_RATIO = 0.5       # 輪郭のこの割合以上が支えに接していればブリッジ（四方・三方を支えられた天井）
 
 # --- 小部品シリンダー（16 CFR 1501 / ASTM F963 相当） ------------------------
 SMALL_PARTS_DIAMETER = 31.7
@@ -165,8 +167,15 @@ def analyze_layers(mesh: trimesh.Trimesh) -> dict:
                 continue
             contact = g.boundary.intersection(support.buffer(1e-3))
             # 輪郭上の点で、支えからの最大距離（張り出しの長さ）を測る
+            # 輪郭だけだと、四方を支えられた天井では全点が支えに接して 0 になるので、内側の格子点も使う
             ring = shapely.segmentize(g.boundary, LAYER_SAMPLE_STEP)
-            pts = shapely.points(shapely.get_coordinates(ring))
+            coords = [shapely.get_coordinates(ring)]
+            minx, miny, maxx, maxy = g.bounds
+            step = max(LAYER_SAMPLE_STEP, math.sqrt(g.area / LAYER_GRID_POINTS))
+            gx, gy = np.meshgrid(np.arange(minx, maxx, step), np.arange(miny, maxy, step))
+            grid = shapely.points(np.column_stack([gx.ravel(), gy.ravel()]))
+            inside = grid[shapely.contains(g, grid)]
+            pts = np.concatenate([shapely.points(coords[0]), inside])
             reach = float(shapely.distance(support, pts).max()) + LAYER_GROW + LAYER_TOL
             if contact.is_empty:
                 out["islands"].append({"z": float(z), "xy": list(g.centroid.coords[0]), "area": g.area,
@@ -177,8 +186,10 @@ def analyze_layers(mesh: trimesh.Trimesh) -> dict:
             # 接している所が何か所に分かれているか（線でも点でも、少し太らせて塊の数を数える）
             blobs = contact.buffer(LAYER_TOL)
             n_contacts = len(getattr(blobs, "geoms", [blobs]))
+            contact_ratio = contact.length / g.boundary.length if g.boundary.length > 0 else 0.0
             item = {"z": float(z), "xy": list(g.centroid.coords[0]), "area": g.area, "reach": reach}
-            if n_contacts >= 2:
+            # 2 か所以上で支えられている、または輪郭の大半が支えに接している（密閉空洞の天井・溝の天井）ならブリッジ
+            if n_contacts >= 2 or contact_ratio >= BRIDGE_CONTACT_RATIO:
                 item["span"] = 2 * reach
                 item["polygon"] = g
                 out["bridges"].append(item)
@@ -315,17 +326,6 @@ def check_thickness(mesh: trimesh.Trimesh, rep: Report) -> None:
             ratio=round(ratio, 5), min=round(float(dist.min()), 3), p5=round(p5, 3),
             samples=int(len(dist)))
 
-
-# --- 層ごとの解析 -------------------------------------------------------------
-LAYER_H = 0.2                    # 積層ピッチ
-LAYER_GROW = LAYER_H * math.tan(math.radians(OVERHANG_MAX_DEG))   # 1 層で許される張り出し（45° → 0.2 mm）
-LAYER_TOL = 0.05                 # 張り出しの判定に足す余裕（メッシュの折れ線近似の誤差）
-LAYER_MIN_REACH = 0.1            # これより短い張り出しは誤差として無視
-MAX_BRIDGE = 10.0                # ブリッジの最大長
-CANTILEVER_WARN = 1.0            # 片持ちの張り出し: これを超えたら WARN
-CANTILEVER_ERROR = 5.0           # 片持ちの張り出し: これを超えたら ERROR
-LAYER_SAMPLE_STEP = 0.2          # 張り出し長さを測るときの輪郭の点間隔
-LAYER_REPORT_MAX = 3             # メッセージに載せる場所の数
 
 # --- 小部品シリンダー --------------------------------------------------------
 

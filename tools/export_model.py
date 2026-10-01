@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -39,17 +40,30 @@ def load(model_dir: Path):
     return mod
 
 
-def printable_stls(model_dir: Path) -> list[Path]:
-    """印刷用 STL（check_stl の対象）のパス一覧。"""
+MANIFEST_SUFFIX = ".printables.json"   # out/<name>.printables.json … 印刷用 STL の一覧（e2e・ビューアが読む）
+
+
+def printable_entries(model_dir: Path) -> list[tuple[Path, str]]:
+    """印刷用 STL（check_stl の対象）と種類（"model" / "part" / "coupon"）の一覧。
+
+    書き出し時に保存した一覧（マニフェスト）を読む。out/ のファイル名から推測すると、
+    クーポンだけあるモデルで本体を見落とすなどの取り違えが起きるため。
+    """
     model_dir = model_dir.resolve()
-    name, out = model_dir.name, model_dir / "out"
-    parts = sorted(out.glob(f"{name}-*.stl"))
-    parts = [p for p in parts if not p.stem.endswith("-viewer")]
-    return parts or [out / f"{name}.stl"]
+    out = model_dir / "out"
+    manifest = out / f"{model_dir.name}{MANIFEST_SUFFIX}"
+    if not manifest.is_file():
+        raise FileNotFoundError(f"{manifest} が無い。先に export_model.py を実行する")
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    return [(out / e["file"], e["kind"]) for e in data["printables"]]
+
+
+def printable_stls(model_dir: Path) -> list[Path]:
+    return [p for p, _ in printable_entries(model_dir)]
 
 
 def _export(shape, path_base: Path) -> None:
-    # with_suffix は名前の中のドット（例: snap0.3）を拡張子とみなすので、文字列で連結する
+    # with_suffix は名前の中のドット（例: part-0.5）を拡張子とみなすので、文字列で連結する
     export_step(shape, path_base.parent / f"{path_base.name}.step")
     export_stl(shape, path_base.parent / f"{path_base.name}.stl",
                tolerance=STL_TOLERANCE, angular_tolerance=STL_ANGULAR_TOLERANCE)
@@ -81,12 +95,21 @@ def main(argv: list[str] | None = None) -> int:
     name = model_dir.name
     out = model_dir / "out"
     out.mkdir(exist_ok=True)
-    for old in out.glob(f"{name}-*.st[el]*"):   # 消えたパーツの古いファイルを残さない
-        if old.suffix in (".stl", ".step"):
+    # 前回の出力（消えたパーツ・古いチェック結果を含む）を残さない
+    for old in out.iterdir():
+        if (old.name == f"{name}{MANIFEST_SUFFIX}" or old.name.startswith((f"{name}.", f"{name}-"))) \
+                and old.name.endswith((".stl", ".step", ".check.json", MANIFEST_SUFFIX)):
             old.unlink()
     for suffix, shape in shapes.items():
         _export(shape, out / f"{name}{suffix}")
-    print(f"wrote {out}")
+
+    # 印刷用 STL の一覧: パーツがあればパーツ（result は組み立て状態なので印刷用ではない）、無ければ result
+    printables = ([{"file": f"{name}-{k}.stl", "kind": "part"} for k in parts]
+                  or [{"file": f"{name}.stl", "kind": "model"}])
+    printables += [{"file": f"{name}-coupon-{k}.stl", "kind": "coupon"} for k in coupons]
+    (out / f"{name}{MANIFEST_SUFFIX}").write_text(
+        json.dumps({"printables": printables}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {out}（印刷用 {len(printables)} 個: {', '.join(e['file'] for e in printables)}）")
     return 0
 
 

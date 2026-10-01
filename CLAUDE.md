@@ -89,7 +89,7 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 1. **spec.md を読む**。無ければ `templates/spec.md` を `models/<name>/spec.md` にコピーし、ユーザーに確認しながら埋める。**曖昧な寸法のまま作り始めない**。
 2. **段階的モデリング**（build123d-mcp で 1 ステップずつ形状を確認）。
 3. **`models/<name>/model.py` に保存**し、`uv run tools/export_model.py models/<name>` で `out/` に **STEP と STL** を出力する。
-4. **`uv run tools/check_stl.py models/<name>/out/<name>.stl`**（おもちゃは `--toy`）を実行し、**ERROR が 0 になるまで修正**する。WARN は理由を確認し、許容するなら spec.md に理由を書く。
+4. **印刷用 STL を `uv run tools/check_stl.py` でチェック**し（おもちゃは `--toy`）、**ERROR が 0 になるまで修正**する。印刷用 STL は単体モデルなら `out/<name>.stl`、複数パーツなら各 `out/<name>-<part>.stl` と `out/<name>-coupon-*.stl`（一覧は `out/<name>.printables.json`。組み立て状態の `out/<name>.stl` は印刷用ではないのでチェックしない）。e2e はこの一覧を全部チェックし、クーポンには `--toy` をかけない（大人が使う試し刷り用）。WARN は理由を確認し、許容するなら spec.md に理由を書く。
 5. **4 方向レンダリング**（正面・側面・上面・アイソメ。build123d-mcp の `render_view`）で自己レビューする。3〜5 は `uv run tools/e2e.py models/<name>` で一括実行でき、画像は `out/<name>-{front,side,top,iso}.png` に出る。意図通りの形か、面取り・フィレットの抜け、薄すぎる箇所が無いかを見る。
 6. **spec.md の変更履歴に追記**する（日付・変更内容・チェック結果）。
 7. **ユーザーに見せる**。Claude Code のクラウド／アプリで作業しているときは、`out/<name>-viewer.html`（回せる 3D ビューア）と `out/<name>-iso.png` をファイル送信ツールで会話に送る。印刷用に `out/<name>.stl` も添付する。

@@ -132,6 +132,14 @@ def test_pendulum_period_matches_analytic():
     approx(pendulum_period(plate, (0, b / 2, 0), (1, 0, 0)), expected, 1e-6)
 
 
+def test_pendulum_period_rejects_axis_through_com():
+    try:
+        pendulum_period(Box(10, 10, 10), (0, 0, 0), (1, 0, 0))
+    except ValueError:
+        return
+    raise AssertionError("重心が軸上なら ValueError")
+
+
 # --- assembly -----------------------------------------------------------------
 
 def test_on_bed_and_flip():
