@@ -17,3 +17,11 @@ dependencies = [
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+worker = [
+    "fastapi>=0.161.1",
+    "httpx>=0.28.1",
+    "matplotlib>=3.11.2",
+    "uvicorn>=0.54.0",
+]

@@ -19,9 +19,13 @@
 │   ├── selftest_check_stl.py  # check_stl.py の動作確認（ダミー STL で検証）
 │   ├── viewer.py           # model.py / STL → 回せる 3D ビューア HTML（単体・オフライン可、可動部の操作つき）
 │   ├── viewer_smoke.mjs    # ビューアのブラウザテスト（Playwright）
+│   ├── render_views.py     # STL → 4 方向の PNG（matplotlib。MCP なしで描く）
+│   ├── run_snippet.py      # build123d のコード片を実行して寸法・体積を返す（3D ワーカー用）
 │   └── e2e.py              # 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア → ブラウザテスト）
 ├── printlib/               # モデル間で使い回す部品・機構・チェック（model.py から import）
-├── tests/test_printlib.py  # printlib のテスト（uv run tests/test_printlib.py）
+├── worker/                 # 3D ワーカー（Slack のずんだもんから呼ぶ HTTP サービス。docs/worker.md）
+├── Dockerfile              # 3D ワーカーのイメージ（Cloud Run）
+├── tests/                  # printlib・3D ワーカーのテスト
 ├── templates/spec.md       # 仕様書の雛形
 ├── models/<name>/
 │   ├── spec.md             # 仕様（寸法・制約・対象年齢・変更履歴）
@@ -109,6 +113,12 @@ Mac が無くても、クラウドのセッションでモデルの作成から�
 4. 仕上がったら commit / push してもらい、Mac 側で `git pull` → `uv run tools/export_model.py models/<name>` で STL を作り直しても良い（`out/` は git 管理外）。
 
 ビューアは外部ライブラリを読み込まない単体の HTML なので、ダウンロードして Mac のブラウザでオフラインでも開ける。
+
+## Slack から使う（3D ワーカー）
+
+Slack のずんだもん（[lightcafecreation/slack-agent-bot](https://github.com/lightcafecreation/slack-agent-bot)）から、
+このリポジトリの機能をツールとして呼べるようにする HTTP サービスが `worker/` にある（Cloud Run 用）。
+ワーカー本体は実装済みで、ずんだもん側の組み込みとデプロイは次の段階。設計・安全面・設定は [docs/worker.md](docs/worker.md)。
 
 ## 印刷手順（人が行う）
 

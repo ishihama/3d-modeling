@@ -80,8 +80,13 @@ if (hasMotion) {
   await page.selectOption('#ctrlBody select', '1');
   await page.click('text=揺らす'); await page.waitForTimeout(200);
   let v = await coverage(); check('揺らしている最中も消えない', near(v), `${v.toFixed(1)}%`); await shot('swinging');
-  await page.waitForTimeout(3500);
-  const angle = await page.locator('#ctrlBody .num').first().textContent();
+  // 描画が遅い環境ではコマ落ち対策で揺れの進みが遅くなるので、決め打ちで待たず 0° に戻るまで待つ（最大 20 秒）
+  let angle = '';
+  for (let t = 0; t < 40; t++) {
+    await page.waitForTimeout(500);
+    angle = (await page.locator('#ctrlBody .num').first().textContent()).trim();
+    if (angle === '0°') break;
+  }
   v = await coverage(); check('揺れが止まったあとも消えない', near(v), `${v.toFixed(1)}% / ${angle}`);
   check('揺れが 0° に戻る', angle.trim() === '0°', angle);
 }

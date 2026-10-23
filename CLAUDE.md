@@ -5,7 +5,7 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 
 ## 方針
 
-- **ローカル完結**。外部 SaaS・クラウド 3D 生成 API・オンライン変換サービスは使わない。
+- **ローカル完結（自分たちが管理する環境で完結）**。外部の 3D 生成 SaaS・クラウド 3D 生成 API・オンライン変換サービスは使わない。モデルの生成・チェックは手元の Mac か、自社の GCP 上の 3D ワーカー（`worker/`、`docs/worker.md`）で行う。Slack（ずんだもん）と Claude API を経由した利用は可。
 - **モデルはすべてコード化**する。1 モデル = `models/<name>/` の 1 ディレクトリ。
   - `spec.md` … 仕様（人と合意した寸法・制約・変更履歴）
   - `model.py` … モデル本体。**パラメータはファイル先頭の定数**にまとめ、マジックナンバーを本文に散らさない
@@ -21,7 +21,7 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
   - 2 つ目のモデルで同じものが要ったら、その時点で `printlib/` に移す（既存モデルも書き換え、体積が変わらないことを確認する）
   - `printlib/` に足したものは `tests/test_printlib.py` にテストを足す。import は build123d / math / copy / dataclasses など MCP のサンドボックスで許可されたものだけ
   - 設計ルールの数値は `printlib.rules` を参照し、model.py に書き写さない
-- **commit するもの**: `models/<name>/`（spec.md・model.py）、`printlib/`、`tools/`、`tests/`、ドキュメント。**commit しないもの**: `out/`（model.py から再生成できる STL / STEP / 画像 / ビューア）
+- **commit するもの**: `models/<name>/`（spec.md・model.py）、`printlib/`、`tools/`、`worker/`、`tests/`、`Dockerfile`、ドキュメント。**commit しないもの**: `out/`（model.py から再生成できる STL / STEP / 画像 / ビューア）
 - **段階的に作って都度検証**する。外形 → くり抜き → 仕切り・穴 → フィレット/面取り、の順に 1 ステップずつ作り、各ステップで体積・バウンディングボックス・有効性を確認してから次へ進む。
 
 ## ツール
@@ -36,6 +36,8 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
 | 通し確認（書き出し → チェック → MCP 検証・4 方向レンダリング → ビューア → ブラウザテスト） | `uv run tools/e2e.py models/<name> [--toy]` |
 | ビューアのブラウザテスト（Playwright。無ければスキップ） | `node tools/viewer_smoke.mjs models/<name>/out/<name>-viewer.html` |
 | 回せる 3D ビューア（単体 HTML・オフライン可。パーツ表示切替・可動部の操作・断面） | `uv run tools/viewer.py models/<name>` → `out/<name>-viewer.html` |
+| 4 方向の画像（MCP なしで描く。e2e の `--no-mcp` 時もこれ） | `uv run --group worker tools/render_views.py out/<name>.stl` |
+| 3D ワーカー（Slack のずんだもんからツールとして呼ぶ HTTP サービス。Cloud Run） | `worker/`。設計・安全面・デプロイは `docs/worker.md`。テストは `uv run --group worker tests/test_worker.py` |
 | スライス・印刷 | **Bambu Studio を人が操作**する。Claude はプリンタに送信しない |
 
 ## Bambu Lab X2D 仕様

@@ -2,7 +2,7 @@
 
     1. tools/export_model.py     … model.py → out/<name>.step / .stl
     2. tools/check_stl.py        … 印刷可能性チェック（ERROR 0 で合格）。複数パーツは各パーツを印刷の向きで
-    3. build123d-mcp（.mcp.json と同じコマンドで起動し MCP プロトコルで呼ぶ）
+    3. build123d-mcp（.mcp.json と同じコマンドで起動し MCP プロトコルで呼ぶ）。--no-mcp なら tools/render_views.py で描く
        execute_file → validate → render_view ×4 … out/<name>-{front,side,top,iso}.png
     4. tools/viewer.py           … out/<name>-viewer.html（回せる 3D ビューア、単体で動く）
     5. tools/viewer_smoke.mjs    … ビューアのブラウザテスト（node と Playwright が無ければスキップ）
@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import check_stl  # noqa: E402
 import export_model  # noqa: E402
+import render_views  # noqa: E402
 import viewer  # noqa: E402
 
 VIEWS = ["front", "side", "top", "iso"]
@@ -137,6 +138,14 @@ def main(argv: list[str] | None = None) -> int:
     if not args.no_mcp:
         step("3. build123d-mcp (execute_file / validate / render_view)")
         results["mcp"] = run_mcp(model_dir, name)
+    elif results.get("export"):
+        # MCP を使わないとき（Cloud Run の 3D ワーカーなど）は matplotlib で 4 方向を描く
+        step("3. render (matplotlib)")
+        code = render_views.main([str(model_dir / "out" / f"{name}.stl")])
+        if code == 2:
+            print("SKIP: matplotlib が無い（uv run --group worker で実行する）")
+        else:
+            results["render"] = code == 0
 
     if results.get("export"):
         step("4. viewer")
