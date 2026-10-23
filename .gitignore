@@ -12,3 +12,9 @@ models/*/out/*
 .DS_Store
 .idea/
 .vscode/
+
+# Terraform（状態と変数の値は commit しない。.terraform.lock.hcl は初回 init 後に commit してよい）
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars

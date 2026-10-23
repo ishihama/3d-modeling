@@ -1,0 +1,17 @@
+# デプロイ先 GCP プロジェクト ID（ずんだもんと同じ）
+project_id = "your-gcp-project-id"
+
+# region       = "asia-northeast1"
+# service_name = "3d-worker"
+
+# 初回: terraform apply -target=google_artifact_registry_repository.worker で先にリポを作り、
+# イメージを build / push してからこの値を入れて apply
+image = "asia-northeast1-docker.pkg.dev/your-gcp-project-id/3d-worker/worker:v1"
+
+# ずんだもんの Cloud Run SA（slack-agent-bot の terraform output service_account_email）
+invoker_service_accounts = ["slack-agent-bot-run@your-gcp-project-id.iam.gserviceaccount.com"]
+
+# cpu_limit    = "2"
+# memory_limit = "4Gi"
+# repo_remote  = "https://github.com/ishihama/3d-modeling.git"
+# github_repo  = "ishihama/3d-modeling"

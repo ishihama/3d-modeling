@@ -25,6 +25,7 @@
 ├── printlib/               # モデル間で使い回す部品・機構・チェック（model.py から import）
 ├── worker/                 # 3D ワーカー（Slack のずんだもんから呼ぶ HTTP サービス。docs/worker.md）
 ├── Dockerfile              # 3D ワーカーのイメージ（Cloud Run）
+├── terraform/              # 3D ワーカーの Cloud Run・シークレット・権限
 ├── tests/                  # printlib・3D ワーカーのテスト
 ├── templates/spec.md       # 仕様書の雛形
 ├── models/<name>/
@@ -118,7 +119,7 @@ Mac が無くても、クラウドのセッションでモデルの作成から�
 
 Slack のずんだもん（[lightcafecreation/slack-agent-bot](https://github.com/lightcafecreation/slack-agent-bot)）から、
 このリポジトリの機能をツールとして呼べるようにする HTTP サービスが `worker/` にある（Cloud Run 用）。
-ワーカー本体は実装済みで、ずんだもん側の組み込みとデプロイは次の段階。設計・安全面・設定は [docs/worker.md](docs/worker.md)。
+Cloud Run の Terraform は `terraform/`。設計・安全面・デプロイ手順は [docs/worker.md](docs/worker.md)。
 
 ## 印刷手順（人が行う）
 

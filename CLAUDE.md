@@ -21,7 +21,7 @@ Claude はこのファイルのルールに従ってモデルを設計・検証�
   - 2 つ目のモデルで同じものが要ったら、その時点で `printlib/` に移す（既存モデルも書き換え、体積が変わらないことを確認する）
   - `printlib/` に足したものは `tests/test_printlib.py` にテストを足す。import は build123d / math / copy / dataclasses など MCP のサンドボックスで許可されたものだけ
   - 設計ルールの数値は `printlib.rules` を参照し、model.py に書き写さない
-- **commit するもの**: `models/<name>/`（spec.md・model.py）、`printlib/`、`tools/`、`worker/`、`tests/`、`Dockerfile`、ドキュメント。**commit しないもの**: `out/`（model.py から再生成できる STL / STEP / 画像 / ビューア）
+- **commit するもの**: `models/<name>/`（spec.md・model.py）、`printlib/`、`tools/`、`worker/`、`tests/`、`Dockerfile`、`terraform/`（*.tf と tfvars.example）、ドキュメント。**commit しないもの**: `out/`（model.py から再生成できる STL / STEP / 画像 / ビューア）
 - **段階的に作って都度検証**する。外形 → くり抜き → 仕切り・穴 → フィレット/面取り、の順に 1 ステップずつ作り、各ステップで体積・バウンディングボックス・有効性を確認してから次へ進む。
 
 ## ツール

@@ -3,7 +3,7 @@
 Slack ボット [lightcafecreation/slack-agent-bot](https://github.com/lightcafecreation/slack-agent-bot)（ずんだもん）が、
 このリポジトリの機能を **ツールとして呼ぶ** ための HTTP サービス。Cloud Run で動かす。
 
-- 状態: **ワーカーは実装済み**（`worker/`・`Dockerfile`・`tests/test_worker.py`）。**ずんだもん側の組み込みと Cloud Run のデプロイ（Terraform）は次の段階**
+- 状態: **ワーカー**（`worker/`・`Dockerfile`・`tests/test_worker.py`）、**Cloud Run の Terraform**（`terraform/`）、**ずんだもん側の組み込み**（slack-agent-bot のブランチ `claude/3d-modeling-tools`、ADR-014）まで実装済み。**未実施: 実際のデプロイと Slack での試用**（下の「デプロイ手順」）
 - Claude の呼び出しはずんだもん側（Messages API + 自前のツールループ、slack-agent-bot の ADR-002 / ADR-008）。ワーカーは Claude を呼ばない
 
 ## 全体像
@@ -81,7 +81,7 @@ root プロセスの環境（`/proc/<pid>/environ`）・`.git/config` の読み�
   **最大インスタンス数は 1** にする（個人・社内用途の負荷なら十分）。増やすときは成果物を GCS に置く形に変える
 - ツールと printlib は **ワーカーのイメージのもの** を使い、作業場所からは models/ だけを扱う。main にマージしたらイメージを作り直す
 
-## Cloud Run の設定（次の段階で Terraform 化。slack-agent-bot の terraform/ にそろえる）
+## Cloud Run の設定（`terraform/`。slack-agent-bot の terraform/ にそろえた構成）
 
 | 項目 | 値 | 理由 |
 | --- | --- | --- |
@@ -90,18 +90,45 @@ root プロセスの環境（`/proc/<pid>/environ`）・`.git/config` の読み�
 | タイムアウト | 900 秒 | e2e は小さいモデルで約 20 秒、slim-bin（8 パーツ）で 1〜2 分 |
 | 最大インスタンス | 1 | 成果物がインスタンスのローカルにあるため（上記） |
 | 環境変数 | `WORKER_REPO_REMOTE=https://github.com/ishihama/3d-modeling.git`、`WORKER_PUSH=1` | |
-| シークレット | `WORKER_GITHUB_TOKEN_FILE`（Secret Manager をボリュームで、モード 0400） | このリポジトリだけに Contents と Pull requests の読み書きを許した fine-grained トークン（または GitHub App） |
+| 実行環境 | 第 2 世代 | sandbox ユーザーへの切り替え・`/proc` を見たプロセスの停止を普通の Linux と同じに動かすため |
+| シークレット | `WORKER_GITHUB_TOKEN_FILE=/secrets/github-token`（Secret Manager `3d-worker-github-token` をボリュームで、モード 0400） | このリポジトリだけに Contents と Pull requests の読み書きを許した fine-grained トークン（または GitHub App） |
 
 処理はすべてリクエストの中で終わる（非同期ジョブにしない）ので、CPU の常時割り当ては不要。
 ずんだもん側のタイムアウト（LLM 900 秒・全体 960 秒・Cloud Run 1000 秒）の中に収まる。
 
-## ずんだもん側でやること（次の段階）
+## ずんだもん側（slack-agent-bot。ADR-014）
 
-1. 起動時に `GET /v1/tools` を呼び、各ツールを `AgentTool` として登録（`executor: "bot"` 以外は HTTP POST に変換。`thread` を付ける）
-2. `modeling_share_files`: `GET /v1/artifacts/...` で取り、`files_upload_v2` でスレッドに投稿（scope `files:write` を追加。ADR-003 の最小権限の見直し）
-3. Cloud Run の ID トークンでワーカーを呼ぶ（`gcp_auth.py` の仕組みを流用）
-4. system prompt に「3D モデリングの依頼では、まず modeling_read_file で CLAUDE.md を読む」を足す
-5. 利用者・チャンネルを限定する（ADR-003 のセーフガードに合わせる）
+ブランチ `claude/3d-modeling-tools` で実装済み（未マージ）:
+
+1. ツール定義はワーカーの `GET /v1/tools` のスナップショット（`agent/tools/modeling_tools_spec.py`。`scripts/sync_modeling_tools.py` で更新）。
+   起動時には取りに行かない（ワーカーが落ちていてもボットは動く）。**ワーカーのツールを変えたら同期する**
+2. スレッドは `handle_user_message` が contextvar に入れ、ツールが `<channel>-<thread_ts>` を付ける（Claude には選ばせない）
+3. `modeling_share_files` はボット側で成果物を取り、`files_upload_v2` で会話中のスレッドに投稿（bot scope に `files:write` を追加）
+4. ID トークン（audience = ワーカーの URL）で呼ぶ。`MODELING_WORKER_URL` が空ならツールを登録しない（既定は無効）
+5. 「まず CLAUDE.md を読む」はツールの説明文に入れてある（system prompt は変えていない）
+
+残り: 利用者・チャンネルの限定は入れていない（ボット全体の ADR-003 のセーフガードのまま）。試用の範囲を広げる前に検討する。
+
+## デプロイ手順（人がやる）
+
+```sh
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # project_id・image・invoker_service_accounts を埋める
+terraform init
+terraform apply -target=google_artifact_registry_repository.worker -target=google_secret_manager_secret.github_token
+echo -n "github_pat_xxx" | gcloud secrets versions add 3d-worker-github-token --data-file=-
+cd .. && gcloud builds submit --tag asia-northeast1-docker.pkg.dev/<project>/3d-worker/worker:v1 .
+cd terraform && terraform apply                # service_url が出る
+```
+
+その後、slack-agent-bot 側で:
+
+1. `terraform.tfvars` に `modeling_worker_url = "<service_url>"` を入れて apply
+2. manifest の `files:write` を Slack App に反映して再インストール
+3. Slack のスレッドで「小物入れを作って」などと頼み、仕様の確認 → 保存 → e2e → 画像・ビューアの投稿まで通るか見る
+
+イメージの apt（libgl1 など）はこの開発環境のプロキシでは試せていない。Cloud Build で初めて通すので、ビルドのログを確認する。
+main にマージしたら（tools/・printlib の変更を反映するため）イメージを作り直して `image` を更新する。
 
 ## 手元での起動・テスト
 
